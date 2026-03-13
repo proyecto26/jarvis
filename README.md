@@ -12,11 +12,13 @@ JARVIS is an experimental AGI architecture built on the belief that intelligence
 Dream → Judge → Act → (feedback) → Dream
 ```
 
-| Agent | Role | Nature | Trigger |
+| Agent | Role | Model Tier | Trigger |
 |---|---|---|---|
-| **Dreamer** | Subconscious, idea generation | Background, async | Temporal schedule |
-| **Judge** | Conscience, decision filter | Evolving, event-driven | Action weight |
-| **Executor** | Real-world action | Interface layer | Human + environment |
+| **Dreamer** | Subconscious, idea generation | **High reasoning** (e.g. o1, Gemini 2.0 Pro) — slow, deep, precise | Temporal schedule |
+| **Judge** | Conscience, decision filter | **Medium** (e.g. Gemini Pro, GPT-4o) — balanced | Action weight threshold |
+| **Executor** | Frontline response + real-world action | **Fast** (e.g. Gemini Flash, GPT-4o mini) — immediate | Every interaction |
+
+> The model tier reflects each agent's nature: the Dreamer needs depth over speed; the Executor needs speed over depth; the Judge balances both.
 
 Each agent can communicate with the others to align vision, reasoning, and execution. But they are not equals — **the Judge changes itself and the others** with each decision. It is the living conscience of the system.
 
@@ -49,11 +51,16 @@ The evolving moral compass. **The only agent that changes itself with each decis
 - See: [`triforce/agents/judge/README.md`](triforce/agents/judge/README.md)
 
 ### ⚡ The Executor (Action Agent)
-The interface between the system and the real world. In our current model, **the Executor is the human** — J.D. is the Executor. He interacts with the environment, perceives context, and communicates with the other two agents through action and reflection. The Executor is the only agent with a voice that the outside world hears.
+The frontline agent — the face of Jarvis that interacts directly with J.D. and the external world. **The Executor is not J.D.** — J.D. is the external principal who talks *to* the Executor. Jarvis speaks through the Executor.
 
-> *No one else can hear our dreams or our thoughts. The outside world only sees what we do.*
+It uses a **fast model** because it handles real-time interactions at high frequency. It doesn't reason deeply from scratch — instead, it carries recent instructions from the Judge as operating context ("standing orders"), acting quickly within a well-defined mission. When something exceeds its authority, it escalates to the Judge.
 
+> *No one else can hear our dreams or our thoughts. The outside world only sees what we do — and that's what the Executor handles.*
+
+- Responds to messages and interactions in real time (fast model).
+- Operates from the Judge's recent instructions as context.
 - Translates approved plans into real-world actions.
+- Escalates high-weight decisions to the Judge before acting.
 - Feeds outcomes back to the Judge for reflection.
 - See: [`triforce/agents/executor/README.md`](triforce/agents/executor/README.md)
 
