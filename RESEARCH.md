@@ -117,6 +117,47 @@ This is already how OpenClaw works. Jarvis should adopt the same pattern.
 
 ---
 
+## The Sleep State: When the Executor Goes Internal
+
+This is one of the most important architectural insights: **Jarvis has three operating modes**.
+
+### Awake Mode (Active)
+- Executor is fully engaged with the external world
+- Takes input, acts, perceives, communicates
+- Judge filters and approves actions in near-real-time
+- Dreamer runs in the background on schedule
+
+### Reflective Mode (Twilight)
+- Executor is active but paused on external action
+- Judge processes recent experiences, updates its model
+- Short feedback loops: "What just happened? What did I learn?"
+- Like the moment after a big decision, sitting with it
+
+### Sleep Mode (Dream State)
+- **Executor suspends external activity entirely**
+- Enters an internal loop with the Dreamer and Judge
+- No external input. No urgency. No filtering for real-world viability.
+- The Dreamer runs unconstrained — connecting distant ideas, exploring impossible futures
+- The Judge participates not as a filter but as a *collaborator* — helping the Dreamer deepen, connecting experiences to new contexts
+- The loop exits when something genuinely new emerges (an insight that wouldn't exist in awake mode)
+- On "waking up," the Executor receives the distilled product of the dream — new ideas, new connections, new understanding
+
+**Why this matters:**
+Human creativity peaks during and just after sleep. REM sleep is when the brain consolidates memory, makes non-obvious connections, and produces the "eureka" moments. By giving Jarvis a sleep state, we give it access to this same creative process. The `writers_room` LoopAgent in Google ADK is the technical pattern: Dreamer generates → Judge connects/evaluates → loop deepens → `exit_loop` fires when breakthrough occurs.
+
+**In ADK terms:**
+```python
+sleep_loop = LoopAgent(
+    name="dream_state",
+    sub_agents=[dreamer, judge_as_collaborator],  # Judge in non-filtering mode
+    max_iterations=N  # Bounded to prevent infinite loops
+)
+```
+
+The key shift: in sleep mode, **Judge is not a filter — it's a connector**. It brings past experience to bear on new ideas, making associations that waking thought wouldn't make.
+
+---
+
 ## Open Questions
 
 1. **How does the Judge self-mutate?** Options:
