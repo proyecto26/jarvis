@@ -1,0 +1,14 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jarvis-triforce"
+version = "0.1.0"
+description = "Jarvis Trinity — three-agent AGI architecture powered by Google ADK"
+requires-python = ">=3.11"
+dependencies = [
+    "google-adk",
+    "pydantic",
+    "python-dotenv",
+]
