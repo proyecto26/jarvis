@@ -1,1 +1,8 @@
-openspec/
+# Runtime outputs only — specs should be committed
+journal/
+*.pyc
+__pycache__/
+.env
+.venv/
+dist/
+*.egg-info/
