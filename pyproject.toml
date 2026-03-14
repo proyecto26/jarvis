@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Jarvis Trinity — three-agent AGI architecture powered by Google ADK"
 requires-python = ">=3.11"
 dependencies = [
-    "google-adk",
+    "google-adk>=1.25.0",
     "pydantic",
     "python-dotenv",
 ]

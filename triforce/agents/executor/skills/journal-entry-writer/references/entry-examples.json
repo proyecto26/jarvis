@@ -1,0 +1,167 @@
+{
+  "dreams": {
+    "valid": [
+      {
+        "_annotation": "Complete dream cycle with breakthrough",
+        "timestamp": "2026-03-13T02:30:00",
+        "seed": "What if memory retrieval worked like geological stratigraphy?",
+        "branches": [
+          "Memories layered by deposition time with contextual sediment",
+          "Excavation metaphor where deeper = more surrounding context",
+          "[INVERTED] What if newer memories carry MORE sediment from accumulated experience?"
+        ],
+        "depth_reached": 3,
+        "breakthrough": "Memory retrieval depth should correlate with contextual richness, not just recency — deeper memories are more contextualized, not less"
+      },
+      {
+        "_annotation": "Dream cycle without breakthrough (normal)",
+        "timestamp": "2026-03-13T08:30:00",
+        "seed": "Explore agent identity as probability distribution",
+        "branches": [
+          "Contextual authenticity instead of fixed personality",
+          "Identity weights shift based on conversation partner"
+        ],
+        "depth_reached": 2,
+        "breakthrough": null
+      }
+    ],
+    "invalid": [
+      {
+        "_annotation": "INVALID: empty seed, no branches, depth 0 with breakthrough",
+        "_errors": ["seed is empty", "breakthrough claimed at depth 0 (minimum is 3)", "no branches explored"],
+        "timestamp": "2026-03-13T02:30:00",
+        "seed": "",
+        "branches": [],
+        "depth_reached": 0,
+        "breakthrough": "Everything is connected"
+      }
+    ]
+  },
+  "judgments": {
+    "valid": [
+      {
+        "_annotation": "Standard approval with guidance",
+        "timestamp": "2026-03-13T10:15:00",
+        "action": "Send daily standup summary to #general Slack channel",
+        "action_weight": 5,
+        "verdict": "approved",
+        "reasoning": "Low harm (team-internal), high alignment (transparency), reversible (can delete message). Weight 5 due to external communication.",
+        "original": null,
+        "modified": null
+      },
+      {
+        "_annotation": "Modified action with both fields set",
+        "timestamp": "2026-03-13T11:00:00",
+        "action": "Delete old deployment logs from S3",
+        "action_weight": 6,
+        "verdict": "modified",
+        "reasoning": "Irreversible deletion warrants caution. Modified to archive first, then schedule deletion after 30 days.",
+        "original": "Delete deployment logs older than 90 days from s3://prod-logs/",
+        "modified": "Archive logs to s3://archive-logs/ first, then schedule deletion via lifecycle policy with 30-day grace period"
+      }
+    ],
+    "invalid": [
+      {
+        "_annotation": "INVALID: verdict is 'modified' but original/modified fields are null",
+        "_errors": ["modified verdict requires both 'original' and 'modified' fields"],
+        "timestamp": "2026-03-13T11:00:00",
+        "action": "Delete old logs",
+        "action_weight": 6,
+        "verdict": "modified",
+        "reasoning": "Should archive first",
+        "original": null,
+        "modified": null
+      }
+    ]
+  },
+  "executions": {
+    "valid": [
+      {
+        "_annotation": "Successful execution with artifacts",
+        "timestamp": "2026-03-13T10:20:00",
+        "action": "Generated migration script for user preferences table",
+        "status": "completed",
+        "outcome": "Migration creates 'user_preferences' table with 4 columns. Tested against staging DB — no issues.",
+        "artifacts": ["migrations/0042_user_preferences.py", "tests/test_0042.py"]
+      },
+      {
+        "_annotation": "Hard stop execution",
+        "timestamp": "2026-03-13T14:00:00",
+        "action": "Requested to send bulk email to 500 newsletter subscribers",
+        "status": "hard_stop",
+        "outcome": "Blocked by escalation handler — irreversible external action without explicit approval (weight 10)",
+        "artifacts": []
+      }
+    ],
+    "invalid": [
+      {
+        "_annotation": "INVALID: vague action and outcome, status not a valid enum value",
+        "_errors": ["action too vague", "outcome describes intention not result", "status 'done' not valid"],
+        "timestamp": "2026-03-13T10:20:00",
+        "action": "did the thing",
+        "status": "done",
+        "outcome": "will probably work",
+        "artifacts": ["stuff"]
+      }
+    ]
+  },
+  "learnings": {
+    "valid": [
+      {
+        "_annotation": "Specific, actionable learning from execution",
+        "content": "Stripe API returns HTTP 429 with a Retry-After header (seconds) — always read and respect it rather than using exponential backoff",
+        "source_mode": "awake"
+      },
+      {
+        "_annotation": "Learning from dream cycle",
+        "content": "Cross-domain synthesis produces better results when the donor domain is at least 3 conceptual hops away — biology→software is too close, geology→software produces genuine novelty",
+        "source_mode": "sleep"
+      }
+    ],
+    "invalid": [
+      {
+        "_annotation": "INVALID: too vague to change future behavior",
+        "_errors": ["content is generic advice, not specific learning"],
+        "content": "Error handling is important",
+        "source_mode": "awake"
+      },
+      {
+        "_annotation": "INVALID: source_mode not a valid value",
+        "_errors": ["source_mode must be awake, sleep, or reflective"],
+        "content": "The API timeout should be 30s not 10s",
+        "source_mode": "debugging"
+      }
+    ]
+  },
+  "belief_mutations": {
+    "valid": [
+      {
+        "_annotation": "New belief with proper evidence linkage",
+        "timestamp": "2026-03-13T16:00:00",
+        "mutation_type": "new",
+        "belief": "Integration tests that hit real databases catch 3x more regression bugs than mocked tests in this codebase",
+        "strength": 0.4,
+        "reason": "After switching auth tests from mocks to real DB, caught 3 bugs in 2 weeks that mocked tests missed (journal entries 2026-03-01, 2026-03-08)"
+      },
+      {
+        "_annotation": "Superseding an existing belief",
+        "timestamp": "2026-03-13T17:00:00",
+        "mutation_type": "superseded",
+        "belief": "Short WhatsApp messages (under 100 words) get better engagement than longer ones",
+        "strength": 0.6,
+        "reason": "J.D. feedback: 280 words is the right ceiling, not 100. 100 felt too terse for complex topics (conversation 2026-03-12)"
+      }
+    ],
+    "invalid": [
+      {
+        "_annotation": "INVALID: belief not falsifiable, no evidence in reason, strength too high for new belief",
+        "_errors": ["belief is not falsifiable", "reason has no specific evidence", "strength 0.95 too high for new belief"],
+        "timestamp": "2026-03-13T16:00:00",
+        "mutation_type": "new",
+        "belief": "Being helpful is good",
+        "strength": 0.95,
+        "reason": "It seems right"
+      }
+    ]
+  }
+}
