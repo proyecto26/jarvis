@@ -12,3 +12,20 @@ dependencies = [
     "pydantic",
     "python-dotenv",
 ]
+
+[project.optional-dependencies]
+memory = [
+    "mem0ai",
+    "chromadb",
+    "graphiti-core",
+    "kuzu",
+    "sentence-transformers",
+]
+temporal = [
+    "temporalio",
+    "google-genai",
+]
+all = [
+    "jarvis-triforce[memory]",
+    "jarvis-triforce[temporal]",
+]

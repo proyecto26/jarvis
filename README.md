@@ -98,7 +98,7 @@ This is not a database. It is more like what a human does at the end of each day
 | Language | **Python** | Best ecosystem for LLMs, agents, ML tools |
 | Agent Framework | **Google ADK** or **OpenAI Agents SDK** | Multi-agent orchestration (Sequential, Loop, Parallel) |
 | Workflow Orchestration | **Temporal** | Durable execution, Dreamer scheduling, retry logic |
-| Memory | **PageIndex** + daily journal | Reasoning-based retrieval over experience logs |
+| Memory | **Mem0** + **Graphiti** + daily journal | Hybrid semantic retrieval + temporal belief graphs (Phase 2) |
 | Feature Flags | **PostHog** | Trunk-based development, gradual rollout |
 | Agent Skills | Dynamic skill loading | Like Neo learning in The Matrix — capabilities added without rebuilding |
 | Communication | **[PersonaPlex](https://github.com/NVIDIA/personaplex)** (inspiration) | Real-time persona-consistent agent interaction patterns |
@@ -115,7 +115,15 @@ Temporal provides durable, fault-tolerant workflow execution. A Cron job fires a
 
 **Trunk-based development** — all changes merge to main. Feature flags (PostHog) gate incomplete features in production. No long-lived branches. The system evolves continuously, not in bursts.
 
-**Skills as first-class citizens** — Jarvis can acquire new capabilities without being rebuilt. Skills are plugins: the agent learns them and uses them, like Neo downloading kung-fu.
+**Skills as first-class citizens** — Jarvis uses Google ADK's `SkillToolset` to load modular capabilities. Each skill is a directory with a `SKILL.md` file following the [AgentSkills.io](https://agentskills.io) spec. Skills are loaded at startup (~100 tokens per skill) and full instructions are injected on demand. Adding a skill = adding a directory.
+
+| Agent | Skills Directory | Skills |
+|---|---|---|
+| Dreamer | [`triforce/agents/dreamer/skills/`](triforce/agents/dreamer/skills/) | `reverse-assumption`, `cross-domain-synthesis` |
+| Judge (filter) | [`triforce/agents/judge/skills-filter/`](triforce/agents/judge/skills-filter/) | `ethics-evaluation`, `belief-mutation` |
+| Judge (collaborator) | [`triforce/agents/judge/skills-collaborator/`](triforce/agents/judge/skills-collaborator/) | `belief-mutation`, `dream-deepening` |
+| Executor | [`triforce/agents/executor/skills/`](triforce/agents/executor/skills/) | `communication-style`, `journal-entry-writer`, `escalation-handler` |
+| Shared | [`triforce/skills/`](triforce/skills/) | `episodic-recall` (Phase 2 stub) |
 
 **Build in the open** — This is a Proyecto 26 project. Every insight, every architecture decision, every failure is documented here. The goal is not just to build Jarvis, but to share the journey.
 
