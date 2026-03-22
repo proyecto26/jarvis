@@ -45,6 +45,13 @@ def register_backends():
     except ImportError:
         pass
 
+    # Grafeo native — uses built-in vector/text indexes
+    try:
+        from benchmarks.backends.grafeo_native import GrafeoNativeBackend
+        BACKEND_REGISTRY["grafeo-native"] = GrafeoNativeBackend
+    except ImportError:
+        pass
+
     # Unified: BM25 + Grafeo graph + embeddings
     try:
         from benchmarks.backends.unified_backend import UnifiedBackend
