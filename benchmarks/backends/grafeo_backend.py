@@ -31,6 +31,8 @@ class GrafeoBackend(MemoryBackend):
         self._beliefs: list[dict] = []
         self._entry_texts: list[str] = []
         self._entry_dates: list[str] = []
+        self._entry_embeddings: np.ndarray | None = None
+        self._embeddings_dirty: bool = True
 
     def name(self) -> str:
         return "grafeo"
@@ -92,6 +94,7 @@ class GrafeoBackend(MemoryBackend):
         self._entries.append(entry)
         self._entry_texts.append(text)
         self._entry_dates.append(entry_date)
+        self._embeddings_dirty = True
 
         # Store in Grafeo graph
         try:
@@ -130,14 +133,19 @@ class GrafeoBackend(MemoryBackend):
         """
         results = []
 
-        # Strategy 1: Embedding-based vector similarity
+        # Strategy 1: Embedding-based vector similarity (cached embeddings)
         if self._model and self._entry_texts:
-            query_embedding = self._model.encode([query], show_progress_bar=False)
-            entry_embeddings = self._model.encode(
-                self._entry_texts, batch_size=64, show_progress_bar=False
-            )
+            if self._embeddings_dirty or self._entry_embeddings is None:
+                self._entry_embeddings = self._model.encode(
+                    self._entry_texts, batch_size=64, show_progress_bar=False,
+                    normalize_embeddings=True,
+                )
+                self._embeddings_dirty = False
 
-            similarities = np.dot(entry_embeddings, query_embedding.T).flatten()
+            query_embedding = self._model.encode(
+                [query], show_progress_bar=False, normalize_embeddings=True
+            )
+            similarities = (self._entry_embeddings @ query_embedding.T).flatten()
             top_indices = np.argsort(similarities)[::-1][:top_k * 2]
 
             for idx in top_indices:
