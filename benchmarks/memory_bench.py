@@ -31,6 +31,13 @@ def register_backends():
     from benchmarks.backends.pageindex_local import PageIndexLocalBackend
     BACKEND_REGISTRY["pageindex-local"] = PageIndexLocalBackend
 
+    # Hybrid: PageIndex + local embeddings
+    try:
+        from benchmarks.backends.hybrid_embeddings import HybridEmbeddingsBackend
+        BACKEND_REGISTRY["hybrid-embeddings"] = HybridEmbeddingsBackend
+    except ImportError:
+        pass
+
     # Grafeo — requires Docker or pip install
     try:
         from benchmarks.backends.grafeo_backend import GrafeoBackend
