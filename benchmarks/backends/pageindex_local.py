@@ -145,23 +145,42 @@ class TfIdf:
         return dot_product / (norm_a * norm_b)
 
 
+_STOPWORDS = frozenset({
+    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "shall", "can", "to", "of", "in", "for",
+    "on", "with", "at", "by", "from", "as", "into", "through", "during",
+    "before", "after", "above", "below", "between", "and", "but", "or",
+    "not", "no", "nor", "so", "yet", "both", "either", "neither", "each",
+    "every", "all", "any", "few", "more", "most", "other", "some", "such",
+    "than", "too", "very", "just", "about", "that", "this", "these", "those",
+    "it", "its", "i", "me", "my", "we", "our", "you", "your", "he", "him",
+    "his", "she", "her", "they", "them", "their", "what", "which", "who",
+    "whom", "when", "where", "why", "how",
+})
+
+_SUFFIX_RULES = [
+    ("ation", 4), ("ment", 4), ("ness", 4), ("ity", 3), ("ence", 4),
+    ("ance", 4), ("ious", 4), ("eous", 4), ("ible", 4), ("able", 4),
+    ("ting", 3), ("ing", 3), ("ies", 3), ("ied", 3), ("ed", 2),
+    ("er", 2), ("ly", 2), ("es", 2), ("s", 1),
+]
+
+
+def _simple_stem(word: str) -> str:
+    """Lightweight suffix-stripping stemmer (no NLTK dependency)."""
+    if len(word) <= 4:
+        return word
+    for suffix, min_stem_len in _SUFFIX_RULES:
+        if word.endswith(suffix) and len(word) - len(suffix) >= min_stem_len:
+            return word[: -len(suffix)]
+    return word
+
+
 def tokenize(text: str) -> list[str]:
-    """Simple tokenizer: lowercase, split on non-alphanumeric, remove stopwords."""
-    STOPWORDS = {
-        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did", "will", "would", "could",
-        "should", "may", "might", "shall", "can", "to", "of", "in", "for",
-        "on", "with", "at", "by", "from", "as", "into", "through", "during",
-        "before", "after", "above", "below", "between", "and", "but", "or",
-        "not", "no", "nor", "so", "yet", "both", "either", "neither", "each",
-        "every", "all", "any", "few", "more", "most", "other", "some", "such",
-        "than", "too", "very", "just", "about", "that", "this", "these", "those",
-        "it", "its", "i", "me", "my", "we", "our", "you", "your", "he", "him",
-        "his", "she", "her", "they", "them", "their", "what", "which", "who",
-        "whom", "when", "where", "why", "how",
-    }
+    """Tokenize, remove stopwords, and apply simple stemming."""
     tokens = re.findall(r"[a-z0-9]+", text.lower())
-    return [t for t in tokens if t not in STOPWORDS and len(t) > 1]
+    return [_simple_stem(t) for t in tokens if t not in _STOPWORDS and len(t) > 1]
 
 
 # ---- Backend implementation ----
