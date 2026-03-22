@@ -182,6 +182,7 @@ class PageIndexLocalBackend(MemoryBackend):
         self._tree: TreeNode | None = None
         self._belief_vectors: list[dict[str, float]] = []
         self._belief_tokens: list[list[str]] = []
+        self._index_dirty: bool = True  # lazy rebuild flag
 
     def name(self) -> str:
         return "pageindex-local"
@@ -229,13 +230,18 @@ class PageIndexLocalBackend(MemoryBackend):
 
         text = self._entry_to_text(entry)
         tokens = tokenize(text)
-        self._documents.append(tokens)
+        # Add bigrams for better phrase matching
+        bigrams = [f"{tokens[i]}_{tokens[i+1]}" for i in range(len(tokens) - 1)]
+        self._documents.append(tokens + bigrams)
         self._entry_map.append(entry_date)
+        self._index_dirty = True
 
         return entry_date
 
     def _rebuild_index(self) -> None:
-        """Rebuild BM25 and TF-IDF indexes after all entries are stored."""
+        """Rebuild BM25 and TF-IDF indexes (only when dirty)."""
+        if not self._index_dirty:
+            return
         if self._documents:
             self._bm25.fit(self._documents)
             self._tfidf.fit(self._documents)
@@ -245,11 +251,13 @@ class PageIndexLocalBackend(MemoryBackend):
                 self._tfidf.vectorize(tokens) for tokens in self._belief_tokens
             ]
         self._build_tree()
+        self._index_dirty = False
 
     def store_belief(self, belief: dict) -> str:
         self._beliefs.append(belief)
         tokens = tokenize(belief.get("belief", "") + " " + belief.get("reason", ""))
         self._belief_tokens.append(tokens)
+        self._index_dirty = True
         return belief.get("belief", "")[:32]
 
     def _build_tree(self) -> None:
