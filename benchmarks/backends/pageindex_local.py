@@ -145,23 +145,91 @@ class TfIdf:
         return dot_product / (norm_a * norm_b)
 
 
+_STOPWORDS = frozenset({
+    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "shall", "can", "to", "of", "in", "for",
+    "on", "with", "at", "by", "from", "as", "into", "through", "during",
+    "before", "after", "above", "below", "between", "and", "but", "or",
+    "not", "no", "nor", "so", "yet", "both", "either", "neither", "each",
+    "every", "all", "any", "few", "more", "most", "other", "some", "such",
+    "than", "too", "very", "just", "about", "that", "this", "these", "those",
+    "it", "its", "i", "me", "my", "we", "our", "you", "your", "he", "him",
+    "his", "she", "her", "they", "them", "their", "what", "which", "who",
+    "whom", "when", "where", "why", "how",
+})
+
+
 def tokenize(text: str) -> list[str]:
-    """Simple tokenizer: lowercase, split on non-alphanumeric, remove stopwords."""
-    STOPWORDS = {
-        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did", "will", "would", "could",
-        "should", "may", "might", "shall", "can", "to", "of", "in", "for",
-        "on", "with", "at", "by", "from", "as", "into", "through", "during",
-        "before", "after", "above", "below", "between", "and", "but", "or",
-        "not", "no", "nor", "so", "yet", "both", "either", "neither", "each",
-        "every", "all", "any", "few", "more", "most", "other", "some", "such",
-        "than", "too", "very", "just", "about", "that", "this", "these", "those",
-        "it", "its", "i", "me", "my", "we", "our", "you", "your", "he", "him",
-        "his", "she", "her", "they", "them", "their", "what", "which", "who",
-        "whom", "when", "where", "why", "how",
-    }
+    """Tokenize text: lowercase, split on non-alphanumeric, remove stopwords."""
     tokens = re.findall(r"[a-z0-9]+", text.lower())
-    return [t for t in tokens if t not in STOPWORDS and len(t) > 1]
+    return [t for t in tokens if t not in _STOPWORDS and len(t) > 1]
+
+
+class CooccurrenceExpander:
+    """Query expansion via word co-occurrence in the corpus.
+
+    Builds a co-occurrence matrix from all documents. For a query term,
+    finds words that frequently appear in the same documents — these are
+    likely semantic neighbors (e.g., "authentication" co-occurs with "login").
+
+    Uses Pointwise Mutual Information (PMI) for weighting:
+        PMI(x,y) = log2(P(x,y) / (P(x) * P(y)))
+    """
+
+    def __init__(self):
+        self._word_doc_sets: dict[str, set[int]] = defaultdict(set)
+        self._num_docs: int = 0
+
+    def fit(self, documents: list[list[str]]) -> None:
+        """Build co-occurrence index from tokenized documents."""
+        self._num_docs = len(documents)
+        self._word_doc_sets = defaultdict(set)
+        for doc_idx, tokens in enumerate(documents):
+            for word in set(tokens):
+                self._word_doc_sets[word].add(doc_idx)
+
+    def expand(self, query_tokens: list[str], top_k: int = 5) -> list[str]:
+        """Expand query with co-occurring terms ranked by PMI.
+
+        Returns up to top_k additional terms that co-occur with query terms
+        across documents, ranked by Pointwise Mutual Information.
+        """
+        if self._num_docs == 0:
+            return []
+
+        # Find documents containing any query term
+        query_docs: set[int] = set()
+        for qt in query_tokens:
+            query_docs |= self._word_doc_sets.get(qt, set())
+
+        if not query_docs:
+            return []
+
+        # Score candidate terms by PMI with query terms
+        candidates: dict[str, float] = {}
+        p_query = len(query_docs) / self._num_docs
+
+        for word, doc_set in self._word_doc_sets.items():
+            if word in query_tokens:
+                continue
+            overlap = len(doc_set & query_docs)
+            if overlap < 2:  # require at least 2 co-occurrences
+                continue
+
+            p_word = len(doc_set) / self._num_docs
+            p_joint = overlap / self._num_docs
+
+            if p_word > 0 and p_query > 0:
+                pmi = math.log2(p_joint / (p_word * p_query))
+                if pmi > 0:  # only positive associations
+                    candidates[word] = pmi
+
+        # Return top-k by PMI score
+        sorted_candidates = sorted(
+            candidates.items(), key=lambda x: x[1], reverse=True
+        )
+        return [word for word, _score in sorted_candidates[:top_k]]
 
 
 # ---- Backend implementation ----
@@ -179,6 +247,7 @@ class PageIndexLocalBackend(MemoryBackend):
         self._entry_map: list[str] = []  # date for each doc index
         self._bm25 = BM25()
         self._tfidf = TfIdf()
+        self._cooccurrence = CooccurrenceExpander()
         self._tree: TreeNode | None = None
         self._belief_vectors: list[dict[str, float]] = []
         self._belief_tokens: list[list[str]] = []
@@ -239,12 +308,13 @@ class PageIndexLocalBackend(MemoryBackend):
         return entry_date
 
     def _rebuild_index(self) -> None:
-        """Rebuild BM25 and TF-IDF indexes (only when dirty)."""
+        """Rebuild BM25, TF-IDF, and co-occurrence indexes (only when dirty)."""
         if not self._index_dirty:
             return
         if self._documents:
             self._bm25.fit(self._documents)
             self._tfidf.fit(self._documents)
+            self._cooccurrence.fit(self._documents)
         if self._belief_tokens:
             self._tfidf.fit(self._documents + self._belief_tokens)
             self._belief_vectors = [
@@ -309,11 +379,14 @@ class PageIndexLocalBackend(MemoryBackend):
         self._tree = root
 
     def recall(self, query: str, top_k: int = 5) -> list[dict]:
-        """Hybrid recall using Reciprocal Rank Fusion (RRF).
+        """Hybrid recall using RRF with PMI-based query expansion.
 
-        Combines BM25 flat ranking with tree-guided TF-IDF cosine ranking
-        using RRF: score(d) = Σ 1/(k + rank_i(d)) for each ranking system i.
-        RRF is robust to score scale differences between the two systems.
+        Three-system Reciprocal Rank Fusion:
+        1. BM25 on original query tokens
+        2. BM25 on expanded query (original + PMI co-occurrence terms)
+        3. Tree-guided TF-IDF cosine ranking
+
+        RRF: score(d) = Σ 1/(k + rank_i(d)) for each ranking system i.
         """
         self._rebuild_index()
 
@@ -323,47 +396,57 @@ class PageIndexLocalBackend(MemoryBackend):
 
         RRF_K = 60  # standard RRF constant
 
-        # Phase 1: BM25 flat ranking
+        # Phase 1: BM25 on original query
         bm25_ranked = self._bm25.rank(query_tokens, top_k=top_k * 3)
-        bm25_by_date: dict[str, int] = {}  # date -> rank (0-indexed)
+        bm25_by_date: dict[str, int] = {}
         for rank, (doc_idx, _score) in enumerate(bm25_ranked):
             date = self._entry_map[doc_idx]
             if date not in bm25_by_date:
                 bm25_by_date[date] = rank
 
-        # Phase 2: Tree-guided TF-IDF cosine ranking
-        tree_results = self._tree_search(query_tokens, beam_width=3, top_k=top_k * 3)
+        # Phase 2: BM25 on expanded query (PMI co-occurrence expansion)
+        expanded_terms = self._cooccurrence.expand(query_tokens, top_k=8)
+        expanded_tokens = query_tokens + expanded_terms
+        bm25_expanded = self._bm25.rank(expanded_tokens, top_k=top_k * 3)
+        expanded_by_date: dict[str, int] = {}
+        for rank, (doc_idx, _score) in enumerate(bm25_expanded):
+            date = self._entry_map[doc_idx]
+            if date not in expanded_by_date:
+                expanded_by_date[date] = rank
+
+        # Phase 3: Tree-guided TF-IDF cosine ranking (also expanded)
+        tree_results = self._tree_search(expanded_tokens, beam_width=3, top_k=top_k * 3)
         tree_by_date: dict[str, int] = {}
         for rank, result in enumerate(tree_results):
             date = result["date"]
             if date not in tree_by_date:
                 tree_by_date[date] = rank
 
-        # Reciprocal Rank Fusion
-        all_dates = set(bm25_by_date.keys()) | set(tree_by_date.keys())
+        # Three-way Reciprocal Rank Fusion
+        all_dates = set(bm25_by_date.keys()) | set(expanded_by_date.keys()) | set(tree_by_date.keys())
         rrf_scores: dict[str, float] = {}
 
         for date in all_dates:
             score = 0.0
             if date in bm25_by_date:
                 score += 1.0 / (RRF_K + bm25_by_date[date])
+            if date in expanded_by_date:
+                score += 1.0 / (RRF_K + expanded_by_date[date])
             if date in tree_by_date:
                 score += 1.0 / (RRF_K + tree_by_date[date])
             rrf_scores[date] = score
 
-        # Sort by RRF score and return top_k
         sorted_dates = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
 
         results = []
         for date, score in sorted_dates[:top_k]:
-            # Normalize score to 0-1 range
-            max_possible = 2.0 / RRF_K  # both systems rank it #1
+            max_possible = 3.0 / RRF_K  # all 3 systems rank it #1
             normalized = score / max_possible
             results.append({
                 "date": date,
                 "score": round(min(normalized, 1.0), 4),
                 "content": "",
-                "source": "rrf",
+                "source": "rrf+pmi",
             })
 
         return results
