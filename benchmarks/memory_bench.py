@@ -38,10 +38,17 @@ def register_backends():
     except ImportError:
         pass
 
-    # Grafeo — requires Docker or pip install
+    # Grafeo — requires pip install grafeo
     try:
         from benchmarks.backends.grafeo_backend import GrafeoBackend
         BACKEND_REGISTRY["grafeo"] = GrafeoBackend
+    except ImportError:
+        pass
+
+    # Unified: BM25 + Grafeo graph + embeddings
+    try:
+        from benchmarks.backends.unified_backend import UnifiedBackend
+        BACKEND_REGISTRY["unified"] = UnifiedBackend
     except ImportError:
         pass
 
