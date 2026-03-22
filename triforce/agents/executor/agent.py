@@ -8,6 +8,7 @@ from google.adk.agents import Agent
 from triforce.config import Config
 from triforce.tools.state_tools import append_to_state
 from triforce.tools.journal_tools import write_journal_entry
+from triforce.tools.memory_tools import recall_episodic, check_belief_conflict, reinforce_memory
 from triforce.agents.executor.prompts import EXECUTOR_INSTRUCTION
 
 logger = logging.getLogger(__name__)
@@ -38,5 +39,8 @@ executor_agent = Agent(
     model=Config.EXECUTOR_MODEL,
     description="Executes approved plans. The only agent that speaks to the outside world.",
     instruction=EXECUTOR_INSTRUCTION,
-    tools=[append_to_state, write_journal_entry] + _skill_toolsets,
+    tools=[
+        append_to_state, write_journal_entry,
+        recall_episodic, check_belief_conflict, reinforce_memory,
+    ] + _skill_toolsets,
 )
