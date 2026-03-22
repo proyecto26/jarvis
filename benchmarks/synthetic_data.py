@@ -177,13 +177,42 @@ def generate_beliefs(num_beliefs: int = 50) -> list[dict]:
     return beliefs
 
 
+# Semantic synonyms/paraphrases for topics (queries that don't use exact keywords)
+SEMANTIC_QUERIES = {
+    "user authentication": "login security and credential verification",
+    "database optimization": "improving query performance and indexing",
+    "API rate limiting": "throttling and request quota enforcement",
+    "error handling patterns": "exception management and fault tolerance",
+    "caching strategies": "storing frequently accessed data in memory",
+    "security best practices": "protecting systems against vulnerabilities",
+    "testing methodology": "quality assurance and automated verification",
+    "deployment pipelines": "CI/CD and release automation",
+    "monitoring and alerting": "observability and incident notification",
+    "code review process": "peer evaluation of source code changes",
+    "microservices architecture": "distributed service decomposition",
+    "data validation": "input sanitization and schema enforcement",
+    "logging standards": "structured application output and tracing",
+    "performance profiling": "identifying bottlenecks and hotspots",
+    "memory management": "heap allocation and garbage collection",
+    "concurrency patterns": "parallel execution and thread safety",
+    "configuration management": "environment settings and feature toggles",
+    "dependency updates": "upgrading third-party libraries and packages",
+    "feature flag rollouts": "gradual release of new functionality",
+    "incident response procedures": "on-call escalation and postmortem processes",
+}
+
+
 def generate_query_pairs(entries: list[dict], num_queries: int = 20) -> list[dict]:
     """Generate query-answer pairs for evaluating recall precision.
+
+    Includes both keyword-based queries (easy) and semantic/paraphrase
+    queries (hard) to test whether the backend can handle synonyms.
 
     Each pair has:
     - query: a natural language question
     - expected_dates: list of dates whose entries should be recalled
     - expected_topics: list of topics that should appear in results
+    - difficulty: "keyword" or "semantic"
     """
     pairs = []
     for i in range(num_queries):
@@ -201,18 +230,29 @@ def generate_query_pairs(entries: list[dict], num_queries: int = 20) -> list[dic
             if topic.lower() in (theme + learnings_text + judgments_text).lower():
                 matching_dates.append(entry["metadata"]["date"])
 
-        query_variants = [
-            f"What do I know about {topic}?",
-            f"Recall experiences related to {topic}",
-            f"What decisions were made about {topic}?",
-            f"What patterns work for {topic}?",
-        ]
+        # Alternate between keyword queries and semantic queries
+        if i % 2 == 0:
+            # Keyword-based query (exact topic terms)
+            query_variants = [
+                f"What do I know about {topic}?",
+                f"Recall experiences related to {topic}",
+            ]
+            difficulty = "keyword"
+        else:
+            # Semantic query (synonyms/paraphrases — no exact keyword match)
+            semantic_text = SEMANTIC_QUERIES.get(topic, topic)
+            query_variants = [
+                f"Tell me about {semantic_text}",
+                f"What have I learned about {semantic_text}?",
+            ]
+            difficulty = "semantic"
 
         pairs.append({
-            "query": query_variants[i % len(query_variants)],
-            "expected_dates": matching_dates,  # all relevant dates (P@5 evaluates top-5 only)
+            "query": query_variants[i % 2],
+            "expected_dates": matching_dates,
             "expected_topics": [topic],
             "topic": topic,
+            "difficulty": difficulty,
         })
 
     return pairs
