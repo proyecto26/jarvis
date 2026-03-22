@@ -15,11 +15,13 @@ dependencies = [
 
 [project.optional-dependencies]
 memory = [
-    "mem0ai",
-    "chromadb",
+    "sentence-transformers",
+    "grafeo",
+]
+memory-full = [
+    "jarvis-triforce[memory]",
     "graphiti-core",
     "kuzu",
-    "sentence-transformers",
 ]
 temporal = [
     "temporalio",
