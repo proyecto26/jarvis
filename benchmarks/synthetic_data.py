@@ -210,7 +210,7 @@ def generate_query_pairs(entries: list[dict], num_queries: int = 20) -> list[dic
 
         pairs.append({
             "query": query_variants[i % len(query_variants)],
-            "expected_dates": matching_dates[:10],  # cap at 10
+            "expected_dates": matching_dates,  # all relevant dates (P@5 evaluates top-5 only)
             "expected_topics": [topic],
             "topic": topic,
         })
