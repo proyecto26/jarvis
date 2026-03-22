@@ -196,8 +196,8 @@ class UnifiedBackend(MemoryBackend):
         rrf_scores: dict[str, float] = {}
 
         W_BM25 = 1.0    # keyword matching
-        W_GRAPH = 0.5   # theme traversal (coarse)
-        W_EMBED = 2.0   # semantic similarity (handles synonyms)
+        W_GRAPH = 0.3   # theme traversal (coarse, demoted)
+        W_EMBED = 3.0   # semantic similarity (primary signal)
 
         for date in all_dates:
             score = 0.0
