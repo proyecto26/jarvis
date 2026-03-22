@@ -198,10 +198,15 @@ class HybridEmbeddingsBackend(MemoryBackend):
                     tree_by_date[date] = rank
 
         # System 3: Embedding cosine similarity (semantic)
+        # Only fall back to embeddings if BM25 found few results (semantic gap)
         embed_by_date: dict[str, int] = {}
-        if self._model is not None and self._entry_embeddings is not None:
+        bm25_confidence = len(bm25_by_date)
+        if (
+            self._model is not None
+            and self._entry_embeddings is not None
+            and bm25_confidence < top_k  # BM25 didn't find enough → semantic query
+        ):
             query_embedding = self._model.encode([query], show_progress_bar=False)
-            # Cosine similarity with all entries
             similarities = np.dot(self._entry_embeddings, query_embedding.T).flatten()
             ranked_indices = np.argsort(similarities)[::-1]
 
@@ -210,7 +215,7 @@ class HybridEmbeddingsBackend(MemoryBackend):
                 if date not in embed_by_date:
                     embed_by_date[date] = rank
 
-        # 3-way RRF
+        # 3-way RRF (or 2-way if embeddings weren't needed)
         all_dates = set(bm25_by_date.keys()) | set(tree_by_date.keys()) | set(embed_by_date.keys())
         rrf_scores: dict[str, float] = {}
 
