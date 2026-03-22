@@ -15,7 +15,7 @@ import numpy as np
 from grafeo import GrafeoDB
 
 from benchmarks.backends.base import MemoryBackend
-from benchmarks.backends.pageindex_local import _STOPWORDS, TfIdf, tokenize
+from benchmarks.backends.pageindex_local import TfIdf, tokenize
 
 
 class GrafeoNativeBackend(MemoryBackend):
