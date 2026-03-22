@@ -69,7 +69,55 @@ Expected: fast writes, zero semantic recall, basic string-match contradictions.
 - Implement locally using the chosen backend
 
 ## Current Best
-**Pending** — awaiting baseline measurement.
+**Unified backend: 89.28/100** (BM25 + Grafeo graph + sentence-transformers embeddings)
+- Recall P@5: 0.76 (handles both keyword and semantic/synonym queries)
+- Contradiction F1: 1.00 (TF-IDF cosine, threshold 0.6)
+- Write latency: 0.02ms/op
+- Read latency: 5.6ms/op
+- Memory: 0.15MB for 100 entries
+
+## Results Summary
+
+| Backend | Composite | P@5 | F1 | Write (ms) | Read (ms) |
+|---------|-----------|-----|-----|-----------|----------|
+| json-baseline | 73.97 | 0.44 | 0.87 | 0.25 | 4.87 |
+| pageindex-local | 82.67 | 0.57 | 1.00 | 0.01 | 0.61 |
+| hybrid-embeddings | 80.32 | 0.64 | 0.80 | 0.02 | 6.37 |
+| grafeo | 87.64 | 0.82 | 0.80 | 0.02 | 5.79 |
+| **unified** | **89.28** | **0.76** | **1.00** | 0.02 | 5.57 |
 
 ## Learnings
-*(Updated after each experiment)*
+
+1. **Keyword-only recall caps at ~57% on semantic queries.** BM25/TF-IDF cannot bridge
+   the synonym gap ("authentication" vs "login security"). Embeddings are essential.
+
+2. **PMI co-occurrence expansion hurts more than helps.** Corpus-derived co-occurrence
+   terms dilute the query signal with noise (P@5 dropped from 0.57 to 0.55).
+
+3. **Stemming adds overhead without improving precision** on this corpus. The synthetic
+   data uses consistent terminology, so suffix stripping wasn't beneficial.
+
+4. **Lazy index rebuilding gives 9x read speedup.** Rebuilding BM25/TF-IDF indexes on
+   every query is wasteful — dirty-flag pattern reduces read latency from 5.8ms to 0.6ms.
+
+5. **Embedding query inference dominates read latency.** sentence-transformers encode()
+   takes ~5ms per query regardless of corpus size. This is the fundamental floor.
+
+6. **Weighted RRF beats equal-weight RRF.** Giving embeddings 3x weight and demoting
+   graph to 0.3x improved P@5 from 0.66 to 0.76.
+
+7. **TF-IDF cosine similarity outperforms embeddings for contradiction detection.**
+   F1=1.0 vs 0.80 — because TF-IDF captures structural similarity (same sentence
+   pattern, different pattern names) better than semantic embeddings.
+
+8. **Graph adds marginal value for recall but enables future relational queries.**
+   Disabling graph only dropped score from 89.28 to 89.22 — but it provides the
+   foundation for temporal belief lineage, topic traversal, and knowledge graphs.
+
+9. **Grafeo embeds locally in Python with zero server overhead.** No Docker needed
+   for the graph component — the `grafeo` pip package includes a Rust-backed
+   embedded database that runs in-process.
+
+10. **Graceful degradation is key.** The tiered architecture (BM25 → +embeddings →
+    +graph) means the memory system works with zero optional dependencies and
+    progressively improves as components are installed.
