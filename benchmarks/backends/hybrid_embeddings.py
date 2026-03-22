@@ -123,16 +123,14 @@ class HybridEmbeddingsBackend(MemoryBackend):
                 self._tfidf.vectorize(tokens) for tokens in self._belief_tokens
             ]
 
-        # Batch-encode all entries and beliefs (pre-normalized for fast cosine via dot product)
+        # Batch-encode all entries and beliefs
         if self._entry_texts and self._model:
             self._entry_embeddings = self._model.encode(
-                self._entry_texts, batch_size=64, show_progress_bar=False,
-                normalize_embeddings=True,
+                self._entry_texts, batch_size=32, show_progress_bar=False
             )
         if self._belief_texts and self._model:
             self._belief_embeddings = self._model.encode(
-                self._belief_texts, batch_size=64, show_progress_bar=False,
-                normalize_embeddings=True,
+                self._belief_texts, batch_size=32, show_progress_bar=False
             )
 
         self._build_tree()
@@ -202,18 +200,12 @@ class HybridEmbeddingsBackend(MemoryBackend):
         # System 3: Embedding cosine similarity (semantic)
         embed_by_date: dict[str, int] = {}
         if self._model is not None and self._entry_embeddings is not None:
-            query_embedding = self._model.encode(
-                [query], show_progress_bar=False, normalize_embeddings=True
-            )
-            # Normalized embeddings → dot product = cosine similarity
-            similarities = self._entry_embeddings @ query_embedding.T
-            similarities = similarities.flatten()
-            # Use partial sort for top-k (faster than full argsort)
-            k = min(top_k * 3, len(similarities))
-            top_indices = np.argpartition(similarities, -k)[-k:]
-            top_indices = top_indices[np.argsort(similarities[top_indices])[::-1]]
+            query_embedding = self._model.encode([query], show_progress_bar=False)
+            # Cosine similarity with all entries
+            similarities = np.dot(self._entry_embeddings, query_embedding.T).flatten()
+            ranked_indices = np.argsort(similarities)[::-1]
 
-            for rank, idx in enumerate(top_indices):
+            for rank, idx in enumerate(ranked_indices[:top_k * 3]):
                 date = self._entry_map[idx]
                 if date not in embed_by_date:
                     embed_by_date[date] = rank
