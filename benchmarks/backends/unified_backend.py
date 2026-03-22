@@ -191,25 +191,29 @@ class UnifiedBackend(MemoryBackend):
                 if date not in embed_by_date:
                     embed_by_date[date] = rank
 
-        # 3-way RRF
+        # Weighted 3-way RRF: embeddings get 2x weight (best for semantic)
         all_dates = set(bm25_by_date.keys()) | set(graph_by_date.keys()) | set(embed_by_date.keys())
         rrf_scores: dict[str, float] = {}
+
+        W_BM25 = 1.0    # keyword matching
+        W_GRAPH = 0.5   # theme traversal (coarse)
+        W_EMBED = 2.0   # semantic similarity (handles synonyms)
 
         for date in all_dates:
             score = 0.0
             if date in bm25_by_date:
-                score += 1.0 / (RRF_K + bm25_by_date[date])
+                score += W_BM25 / (RRF_K + bm25_by_date[date])
             if date in graph_by_date:
-                score += 1.0 / (RRF_K + graph_by_date[date])
+                score += W_GRAPH / (RRF_K + graph_by_date[date])
             if date in embed_by_date:
-                score += 1.0 / (RRF_K + embed_by_date[date])
+                score += W_EMBED / (RRF_K + embed_by_date[date])
             rrf_scores[date] = score
 
         sorted_dates = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
 
         results = []
         for date, score in sorted_dates[:top_k]:
-            max_possible = 3.0 / RRF_K
+            max_possible = (W_BM25 + W_GRAPH + W_EMBED) / RRF_K
             normalized = score / max_possible
             results.append({
                 "date": date,
