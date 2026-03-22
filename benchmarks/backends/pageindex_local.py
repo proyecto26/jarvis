@@ -205,26 +205,17 @@ class PageIndexLocalBackend(MemoryBackend):
         self._belief_tokens = []
 
     def _entry_to_text(self, entry: dict) -> str:
-        """Flatten a journal entry to searchable text with field weighting.
-
-        Theme and learnings are repeated to boost their BM25 weight.
-        """
+        """Flatten a journal entry to searchable text."""
         parts = []
-        # Theme gets 3x weight (most important for topic matching)
-        theme = entry.get("metadata", {}).get("dominant_theme", "")
-        parts.extend([theme] * 3)
-        # Learnings get 2x weight (distilled knowledge)
-        for l in entry.get("learnings", []):
-            content = l.get("content", "")
-            parts.extend([content] * 2)
-        # Judgments and executions at normal weight
+        parts.append(entry.get("metadata", {}).get("dominant_theme", ""))
         for j in entry.get("judgments", []):
             parts.append(j.get("action", ""))
             parts.append(j.get("reasoning", ""))
         for e in entry.get("executions", []):
             parts.append(e.get("action", ""))
             parts.append(e.get("outcome", ""))
-        # Dreams and mutations at normal weight
+        for l in entry.get("learnings", []):
+            parts.append(l.get("content", ""))
         for d in entry.get("dreams", []):
             parts.append(d.get("seed", ""))
             if d.get("breakthrough"):
