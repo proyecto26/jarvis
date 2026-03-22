@@ -249,10 +249,13 @@ class HybridEmbeddingsBackend(MemoryBackend):
             np.linalg.norm(embeddings[0]) * np.linalg.norm(embeddings[1])
         ))
 
-        has_conflict = similarity > 0.75
-        if similarity > 0.9:
+        # Embedding similarity captures semantic closeness:
+        # High similarity (>0.45) on belief statements means they address the
+        # same topic — if the wording differs, that signals a potential conflict
+        has_conflict = similarity > 0.45
+        if similarity > 0.85:
             recommendation = "merge"
-        elif similarity > 0.85:
+        elif similarity > 0.7:
             recommendation = "supersede"
         elif has_conflict:
             recommendation = "review"
