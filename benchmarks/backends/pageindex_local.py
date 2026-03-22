@@ -309,46 +309,64 @@ class PageIndexLocalBackend(MemoryBackend):
         self._tree = root
 
     def recall(self, query: str, top_k: int = 5) -> list[dict]:
-        """Two-phase recall: BM25 flat search + tree-guided refinement."""
+        """Hybrid recall using Reciprocal Rank Fusion (RRF).
+
+        Combines BM25 flat ranking with tree-guided TF-IDF cosine ranking
+        using RRF: score(d) = Σ 1/(k + rank_i(d)) for each ranking system i.
+        RRF is robust to score scale differences between the two systems.
+        """
         self._rebuild_index()
 
         query_tokens = tokenize(query)
         if not query_tokens:
             return []
 
-        # Phase 1: BM25 flat search
-        bm25_results = self._bm25.rank(query_tokens, top_k=top_k * 2)
+        RRF_K = 60  # standard RRF constant
 
-        # Phase 2: Tree-guided beam search for additional candidates
-        tree_results = self._tree_search(query_tokens, beam_width=3, top_k=top_k)
-
-        # Merge and deduplicate
-        seen_dates = set()
-        merged = []
-
-        # Combine BM25 + tree results, normalize scores
-        max_bm25 = max((s for _, s in bm25_results), default=1.0)
-
-        for doc_idx, score in bm25_results:
+        # Phase 1: BM25 flat ranking
+        bm25_ranked = self._bm25.rank(query_tokens, top_k=top_k * 3)
+        bm25_by_date: dict[str, int] = {}  # date -> rank (0-indexed)
+        for rank, (doc_idx, _score) in enumerate(bm25_ranked):
             date = self._entry_map[doc_idx]
-            if date not in seen_dates:
-                seen_dates.add(date)
-                normalized = score / max(max_bm25, 1e-6)
-                merged.append({
-                    "date": date,
-                    "score": round(min(normalized, 1.0), 4),
-                    "content": " ".join(self._documents[doc_idx][:50]),
-                    "source": "bm25",
-                })
+            if date not in bm25_by_date:
+                bm25_by_date[date] = rank
 
-        for result in tree_results:
+        # Phase 2: Tree-guided TF-IDF cosine ranking
+        tree_results = self._tree_search(query_tokens, beam_width=3, top_k=top_k * 3)
+        tree_by_date: dict[str, int] = {}
+        for rank, result in enumerate(tree_results):
             date = result["date"]
-            if date not in seen_dates:
-                seen_dates.add(date)
-                merged.append(result)
+            if date not in tree_by_date:
+                tree_by_date[date] = rank
 
-        merged.sort(key=lambda x: x["score"], reverse=True)
-        return merged[:top_k]
+        # Reciprocal Rank Fusion
+        all_dates = set(bm25_by_date.keys()) | set(tree_by_date.keys())
+        rrf_scores: dict[str, float] = {}
+
+        for date in all_dates:
+            score = 0.0
+            if date in bm25_by_date:
+                score += 1.0 / (RRF_K + bm25_by_date[date])
+            if date in tree_by_date:
+                score += 1.0 / (RRF_K + tree_by_date[date])
+            rrf_scores[date] = score
+
+        # Sort by RRF score and return top_k
+        sorted_dates = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
+
+        results = []
+        for date, score in sorted_dates[:top_k]:
+            # Normalize score to 0-1 range
+            max_possible = 2.0 / RRF_K  # both systems rank it #1
+            normalized = score / max_possible
+            results.append({
+                "date": date,
+                "score": round(min(normalized, 1.0), 4),
+                "content": "",
+                "source": "rrf",
+            })
+
+        return results
 
     def _tree_search(
         self, query_tokens: list[str], beam_width: int = 3, top_k: int = 5
