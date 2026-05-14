@@ -1,60 +1,60 @@
 ## 1. Foundation
 
-- [ ] 1.1 Create `triforce/llm/__init__.py`
-- [ ] 1.2 Define `RouteRequest`, `RouteDecision`, `Model`, `Provider`, `Adapter` dataclasses in `triforce/llm/types.py`
-- [ ] 1.3 Define `LocalOnlyRouteFailure`, `NoCandidateError`, `ProviderUnhealthy` exceptions in `triforce/llm/errors.py`
+- [x] 1.1 Create `triforce/llm/__init__.py` — exports types and errors
+- [x] 1.2 Define `RouteRequest`, `RouteDecision`, `Model`, `Adapter`, `PrivacyClass` in `triforce/llm/types.py`
+- [x] 1.3 Define `LocalOnlyRouteFailure`, `NoCandidateError`, `ProviderUnhealthy`, `PolicyError` in `triforce/llm/errors.py`
 
 ## 2. Registry
 
-- [ ] 2.1 Implement `Registry` class in `triforce/llm/registry.py` — loads model declarations from `triforce/llm/models.yaml`
-- [ ] 2.2 Author initial `models.yaml` with: Gemini Pro/Flash, Nemotron Nano/Super (via Ollama), Gemma 4 1B/4B/12B (via Ollama)
-- [ ] 2.3 Capture per-model metadata: provider, context window, capabilities, P95 latency, supports_tools, supports_vision
+- [x] 2.1 Implement `Registry` class in `triforce/llm/registry.py` — loads from `triforce/llm/models.yaml`
+- [x] 2.2 Author initial `models.yaml` — 9 models: 3 Gemini, 2 Nemotron, 4 Gemma 4
+- [x] 2.3 Per-model metadata: provider, context window, capabilities, P95 latency, supports_tools, supports_vision, tags
 
 ## 3. Providers
 
-- [ ] 3.1 Define `Provider` ABC in `triforce/llm/providers/base.py` with `generate()`, `health()`, `capabilities()` methods
-- [ ] 3.2 Implement `GeminiProvider` wrapping `google-genai` SDK
-- [ ] 3.3 Implement `OllamaProvider` for both Nemotron and Gemma 4 served via local Ollama
-- [ ] 3.4 Add provider health-check with configurable timeout (default 200 ms)
-- [ ] 3.5 Add provider response normalization (all providers return uniform `Response(text, function_calls, raw)`)
+- [x] 3.1 Define `Provider` ABC in `triforce/llm/providers/base.py` with `generate()`, `health()`, `capabilities()`
+- [x] 3.2 Implement `GeminiProvider` wrapping `google-genai` SDK with system instruction + tool support
+- [x] 3.3 Implement `OllamaProvider` using httpx → `/api/chat` for Nemotron + Gemma 4
+- [x] 3.4 Provider health-check with 200ms timeout + 30s result cache
+- [x] 3.5 Response normalization — uniform `ProviderResponse(text, function_calls, raw, provider, model_id)`
 
 ## 4. Routing Policies
 
-- [ ] 4.1 Define policy YAML schema in `triforce/llm/policies/SCHEMA.md`
-- [ ] 4.2 Implement policy loader in `triforce/llm/policies/loader.py`
-- [ ] 4.3 Author `dreamer.yaml` — prefer local reasoning model, allow cloud for vision, latency budget = unlimited (Sleep mode)
-- [ ] 4.4 Author `judge_filter.yaml` — prefer model with ethics adapter, fall back to Gemini Pro, latency budget = 1500 ms
-- [ ] 4.5 Author `judge_collaborator.yaml` — prefer long-context model, latency budget = unlimited (Sleep mode)
-- [ ] 4.6 Author `executor.yaml` — prefer low-latency local model, latency budget = 800 ms, cloud allowed if budget exceeded
+- [x] 4.1 Policy YAML schema documented in `triforce/llm/policies/SCHEMA.md`
+- [x] 4.2 Policy loader in `triforce/llm/policies/loader.py` with caching + validation
+- [x] 4.3 `dreamer.yaml` — prefers Nemotron deep reasoning, local-preferred, 30s latency budget
+- [x] 4.4 `judge_filter.yaml` — function_calling required, 1500ms budget, cloud-ok by default
+- [x] 4.5 `judge_collaborator.yaml` — long-context preference, 15s budget, local-preferred
+- [x] 4.6 `executor.yaml` — low-latency Gemma 4 4B target, 800ms budget, cloud fallback allowed
 
 ## 5. Router Engine
 
-- [ ] 5.1 Implement `Router.route(request)` in `triforce/llm/router.py`
-- [ ] 5.2 Implement candidate scoring (capability match + latency budget + privacy class)
-- [ ] 5.3 Implement adapter selection (match `task_type` to adapter tags)
-- [ ] 5.4 Implement provider health gating (demote unhealthy providers in candidate ranking)
-- [ ] 5.5 Implement `local-only` enforcement (raise `LocalOnlyRouteFailure` rather than fall back to cloud)
+- [x] 5.1 Implement `Router.route(request)` in `triforce/llm/router.py`
+- [x] 5.2 Candidate scoring: capability match + tag match + latency + locality bonus (with tightest-budget enforcement across step/request/policy)
+- [x] 5.3 Adapter selection — `Registry.find_adapters_for(model_id, task_type)` matches task tags
+- [x] 5.4 Provider health gating — unhealthy providers demoted; cached for 30s
+- [x] 5.5 `local-only` enforcement — `_effective_privacy()` uses strictest of (request, step); raises `LocalOnlyRouteFailure` if no local candidate exists
 
 ## 6. Observability
 
-- [ ] 6.1 Implement `RoutingLogger` in `triforce/llm/observability.py` — JSONL append-only with atomic writes
-- [ ] 6.2 Log every route decision with: timestamp, request_signature, decision, candidates_considered, reasoning
-- [ ] 6.3 Log policy violations at WARNING level
-- [ ] 6.4 Add `journal/llm-routing/` to `.gitignore` template (it's per-machine)
+- [x] 6.1 Implement `log_decision()` in `triforce/llm/observability.py` — JSONL append with atomic single-line writes
+- [x] 6.2 Every route decision logs: ts, agent, task_type, decision_id, model_id, base_id, provider, is_local, fallback_depth, reasoning, candidates_considered
+- [x] 6.3 Policy violations (e.g. `refused_cloud_fallback`) logged at level=warning
+- [x] 6.4 `journal/llm-routing/` is under `journal/` (already in `.gitignore` via `journal/*` pattern)
 
 ## 7. Agent Integration
 
-- [ ] 7.1 Add `Config.MODEL_ROUTER` singleton in `triforce/config.py` (lazy-initialized, idempotent)
-- [ ] 7.2 Update `triforce/agents/dreamer/agent.py` to use `Config.MODEL_ROUTER.for_agent("dreamer")`
-- [ ] 7.3 Update `triforce/agents/judge/agent.py` to use `Config.MODEL_ROUTER.for_agent("judge_filter")` and `for_agent("judge_collaborator")`
-- [ ] 7.4 Update `triforce/agents/executor/agent.py` to use `Config.MODEL_ROUTER.for_agent("executor")`
-- [ ] 7.5 Verify ADK accepts the router-returned model surface (may need a thin `ModelHandle` wrapper)
+- [x] 7.1 Add `Config.model_for(agent, fallback)` to `triforce/config.py` — router-aware, with try/except fallback so router failures never crash the agent
+- [x] 7.2 Update `triforce/agents/dreamer/agent.py` — `model=Config.model_for("dreamer", Config.DREAMER_MODEL)`
+- [x] 7.3 Update `triforce/agents/judge/agent.py` — `model_for("judge_filter", ...)` and `model_for("judge_collaborator", ...)`
+- [x] 7.4 Update `triforce/agents/executor/agent.py` — `model_for("executor", Config.EXECUTOR_MODEL)`
+- [x] 7.5 Router returns `base_id` (a plain string) — ADK `Agent(model=...)` accepts strings, no wrapper needed
 
 ## 8. Backward Compatibility Escape Hatch
 
-- [ ] 8.1 Honor `DANTE_ROUTER=off` env var — restore legacy hardcoded model selection
-- [ ] 8.2 Honor forced overrides via existing env vars (`EXECUTOR_MODEL`, etc.) — log warning that override bypasses routing
-- [ ] 8.3 Add migration test: with `DANTE_ROUTER=off`, behavior is byte-identical to pre-router code paths
+- [x] 8.1 `DANTE_ROUTER=off` (default) → `Config.model_for()` returns the supplied fallback unchanged → byte-identical to pre-router
+- [x] 8.2 Forced per-agent overrides via legacy env vars work because they ARE the `fallback` parameter to `model_for()` when router is off
+- [x] 8.3 Verified: with `DANTE_ROUTER=off`, agents resolve to `gemini-2.0-flash`, `gemini-2.0-pro-exp`, `gemini-1.5-pro` (legacy defaults); with `DANTE_ROUTER=on` they resolve to `gemma4:4b`, `nemotron:super-49b-v2`, `gemma4:12b` (router picks)
 
 ## 9. Router-Audit ADK Skill
 

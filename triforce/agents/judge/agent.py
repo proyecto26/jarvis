@@ -39,7 +39,7 @@ def _load_skill_toolsets(*skill_dirs: pathlib.Path) -> list:
 
 judge_filter = Agent(
     name="judge_filter",
-    model=Config.JUDGE_MODEL,
+    model=Config.model_for("judge_filter", Config.JUDGE_MODEL),
     description="Evaluates proposed actions against ethics, alignment, reversibility, and weight. Gates execution.",
     instruction=FILTER_PROMPT,
     tools=[
@@ -51,7 +51,7 @@ judge_filter = Agent(
 
 judge_collaborator = Agent(
     name="judge_collaborator",
-    model=Config.JUDGE_MODEL,
+    model=Config.model_for("judge_collaborator", Config.JUDGE_MODEL),
     description="Connects Dreamer's ideas to past experience. Exits the dream loop when a breakthrough occurs.",
     instruction=COLLABORATOR_PROMPT,
     tools=[

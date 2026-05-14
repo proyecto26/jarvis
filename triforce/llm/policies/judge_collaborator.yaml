@@ -1,0 +1,16 @@
+agent: judge_collaborator
+# Judge collaborator runs inside dream loops — no real-time pressure. Wants
+# long-context to hold the running dream state.
+default_privacy_class: local-preferred
+max_latency_ms: 15000
+prefer: [reasoning, long_context, function_calling]
+prefer_tags: [role:deep, family:nemotron]
+must_have: [reasoning]
+fallback_chain:
+  - capability_match: [reasoning, long_context]
+    prefer_local: true
+  - capability_match: [reasoning]
+    prefer_local: true
+  - capability_match: [reasoning, long_context]
+    privacy_class: cloud-ok
+on_no_candidate: use_default_gemini

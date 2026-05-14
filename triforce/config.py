@@ -43,3 +43,41 @@ class Config:
     EPISODIC_DB_PATH: Path = Path(
         os.getenv("EPISODIC_DB_PATH", str(PROJECT_ROOT / "memory" / "episodic.db"))
     )
+
+    # --- LLM Router ---
+    # When "off", agents resolve model strings from the legacy DREAMER_MODEL /
+    # JUDGE_MODEL / EXECUTOR_MODEL env vars (byte-identical to pre-router
+    # behavior). Any other value enables the router.
+    DANTE_ROUTER: str = os.getenv("DANTE_ROUTER", "off")
+
+    @classmethod
+    def router_enabled(cls) -> bool:
+        return cls.DANTE_ROUTER.lower() not in ("off", "0", "false", "no", "")
+
+    @classmethod
+    def model_for(cls, agent: str, fallback: str) -> str:
+        """Resolve the model string for an agent, honoring the router toggle.
+
+        When ``DANTE_ROUTER=off`` (default), returns ``fallback``. Otherwise
+        calls the router and returns ``RouteDecision.model.base_id``. The
+        fallback is also returned if the router fails for any reason — agents
+        must remain runnable.
+        """
+        if not cls.router_enabled():
+            return fallback
+        try:
+            from triforce.llm.router import get_router
+            from triforce.llm import RouteRequest
+
+            decision = get_router().route(RouteRequest(agent=agent))
+            return decision.model.base_id
+        except Exception as exc:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Router failed for agent=%s, using fallback %s: %s",
+                agent,
+                fallback,
+                exc,
+            )
+            return fallback

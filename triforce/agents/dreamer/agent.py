@@ -34,7 +34,7 @@ except (ImportError, AttributeError) as exc:
 
 dreamer_agent = Agent(
     name="dreamer",
-    model=Config.DREAMER_MODEL,
+    model=Config.model_for("dreamer", Config.DREAMER_MODEL),
     description="Generates unconstrained ideas, visions, and connections. The subconscious.",
     instruction=DREAMER_INSTRUCTION,
     tools=[append_to_state] + _skill_toolsets,

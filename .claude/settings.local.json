@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:google.github.io)",
+      "WebFetch(domain:github.com)",
+      "Bash(pip install:*)",
+      "Bash(pip show:*)",
+      "Bash(adk --version)",
+      "Bash(temporal version:*)",
+      "Bash(curl -sL -o /tmp/temporal.zip \"https://temporal.download/cli/archive/latest?platform=windows&arch=amd64\")",
+      "Read(//tmp/**)",
+      "Bash(mkdir -p ~/bin)",
+      "Bash(unzip -o /tmp/temporal.zip -d ~/bin/)",
+      "Read(//c/Users/jdnic/**)",
+      "Bash(export PATH=\"$HOME/bin:$PATH\")",
+      "Bash(netstat -ano)",
+      "Bash(tasklist //FI \"PID eq 18564\")",
+      "Bash(tasklist /FI \"PID eq 18564\")"
+    ]
+  }
+}

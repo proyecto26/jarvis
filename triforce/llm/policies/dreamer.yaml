@@ -1,0 +1,19 @@
+agent: dreamer
+# Dreamer runs on Temporal schedule — no user is waiting. Latency budget is
+# generous so we can prefer deep reasoning models.
+default_privacy_class: local-preferred
+max_latency_ms: 30000
+prefer: [reasoning, long_context]
+prefer_tags: [role:deep, family:nemotron]
+must_have: [reasoning]
+fallback_chain:
+  # 1. Best local deep-reasoning model
+  - capability_match: [reasoning, long_context]
+    prefer_local: true
+  # 2. Any local reasoning model
+  - capability_match: [reasoning]
+    prefer_local: true
+  # 3. Cloud frontier model — vision-required dreams hit this branch
+  - capability_match: [reasoning, long_context]
+    privacy_class: cloud-ok
+on_no_candidate: use_default_gemini

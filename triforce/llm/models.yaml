@@ -1,0 +1,130 @@
+# DANTE LLM Registry
+#
+# Declarative model catalog. The router scores candidates from this list when
+# selecting a model for each call. To add a model: append an entry and
+# (optionally) declare an adapter that targets it in adapters/manifest.yaml.
+#
+# Fields:
+#   id              — internal identifier; agent policies refer to models by id
+#   provider        — must match a registered provider name (gemini, ollama)
+#   base_id         — provider-specific model identifier
+#   capabilities    — list of capability tags (reasoning, tools, vision, ...)
+#   context_window  — max input tokens the model accepts
+#   p95_latency_ms  — measured/expected P95 first-token latency
+#   cost_per_1k_tokens_usd — 0 for local models
+#   is_local        — True if no external network call required
+#   supports_tools  — True if function-calling / tool-use is supported
+#   supports_vision — True if multimodal input is supported
+#   tags            — free-form tags (e.g. tier, size)
+
+models:
+  # --- Frontier cloud (Gemini) ---
+  - id: gemini-2.0-flash
+    provider: gemini
+    base_id: gemini-2.0-flash
+    capabilities: [reasoning, tools, function_calling, low_latency]
+    context_window: 1_000_000
+    p95_latency_ms: 500
+    cost_per_1k_tokens_usd: 0.00015
+    is_local: false
+    supports_tools: true
+    supports_vision: true
+    tags: [tier:cloud, family:gemini, role:fast]
+
+  - id: gemini-1.5-pro
+    provider: gemini
+    base_id: gemini-1.5-pro
+    capabilities: [reasoning, tools, function_calling, long_context]
+    context_window: 2_000_000
+    p95_latency_ms: 1_500
+    cost_per_1k_tokens_usd: 0.0035
+    is_local: false
+    supports_tools: true
+    supports_vision: true
+    tags: [tier:cloud, family:gemini, role:balanced]
+
+  - id: gemini-2.0-pro-exp
+    provider: gemini
+    base_id: gemini-2.0-pro-exp
+    capabilities: [reasoning, tools, function_calling, long_context]
+    context_window: 2_000_000
+    p95_latency_ms: 2_500
+    cost_per_1k_tokens_usd: 0.0035
+    is_local: false
+    supports_tools: true
+    supports_vision: true
+    tags: [tier:cloud, family:gemini, role:deep]
+
+  # --- Specialized local (Nemotron via Ollama) ---
+  - id: nemotron-nano-9b
+    provider: ollama
+    base_id: nemotron:nano-9b-v2
+    capabilities: [reasoning, tools, function_calling]
+    context_window: 128_000
+    p95_latency_ms: 600
+    cost_per_1k_tokens_usd: 0.0
+    is_local: true
+    supports_tools: true
+    supports_vision: false
+    tags: [tier:local, family:nemotron, role:fast]
+
+  - id: nemotron-super-49b
+    provider: ollama
+    base_id: nemotron:super-49b-v2
+    capabilities: [reasoning, tools, function_calling, long_context]
+    context_window: 128_000
+    p95_latency_ms: 1_200
+    cost_per_1k_tokens_usd: 0.0
+    is_local: true
+    supports_tools: true
+    supports_vision: false
+    tags: [tier:local, family:nemotron, role:deep]
+
+  # --- Edge / on-device (Gemma 4 via Ollama) ---
+  - id: gemma-4-1b
+    provider: ollama
+    base_id: gemma4:1b
+    capabilities: [low_latency, low_cost]
+    context_window: 32_000
+    p95_latency_ms: 80
+    cost_per_1k_tokens_usd: 0.0
+    is_local: true
+    supports_tools: false
+    supports_vision: false
+    tags: [tier:edge, family:gemma, role:tiny]
+
+  - id: gemma-4-4b
+    provider: ollama
+    base_id: gemma4:4b
+    capabilities: [reasoning, tools, function_calling, low_latency, low_cost]
+    context_window: 128_000
+    p95_latency_ms: 200
+    cost_per_1k_tokens_usd: 0.0
+    is_local: true
+    supports_tools: true
+    supports_vision: false
+    tags: [tier:edge, family:gemma, role:fast]
+
+  - id: gemma-4-12b
+    provider: ollama
+    base_id: gemma4:12b
+    capabilities: [reasoning, tools, function_calling, long_context]
+    context_window: 128_000
+    p95_latency_ms: 500
+    cost_per_1k_tokens_usd: 0.0
+    is_local: true
+    supports_tools: true
+    supports_vision: false
+    tags: [tier:edge, family:gemma, role:balanced]
+
+  - id: gemma-4-27b
+    provider: ollama
+    base_id: gemma4:27b
+    capabilities: [reasoning, tools, function_calling, long_context]
+    context_window: 128_000
+    p95_latency_ms: 900
+    cost_per_1k_tokens_usd: 0.0
+    is_local: true
+    supports_tools: true
+    supports_vision: false
+    tags: [tier:edge, family:gemma, role:deep]

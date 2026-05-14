@@ -36,7 +36,7 @@ except (ImportError, AttributeError) as exc:
 
 executor_agent = Agent(
     name="executor",
-    model=Config.EXECUTOR_MODEL,
+    model=Config.model_for("executor", Config.EXECUTOR_MODEL),
     description="Executes approved plans. The only agent that speaks to the outside world.",
     instruction=EXECUTOR_INSTRUCTION,
     tools=[

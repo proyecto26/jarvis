@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "autoresearch": {
+      "source": "proyecto26/autoresearch-ai-plugin",
+      "sourceType": "github",
+      "computedHash": "4818f5a009270d2e7d1ed018e9a3540635746c5b60bbc959a72f8ada4f8c0de5"
+    },
+    "autoresearch-ml": {
+      "source": "proyecto26/autoresearch-ai-plugin",
+      "sourceType": "github",
+      "computedHash": "f5db791ddd43a85af4c8d24a2aeeabd4f1745721870e0eb6678e32c4cb9c4eab"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+agent: executor
+# Executor is on the user-facing critical path — latency is the primary
+# constraint. Local edge model (Gemma 4 4B) is the target; cloud allowed
+# when the budget is exceeded.
+default_privacy_class: cloud-ok
+max_latency_ms: 800
+prefer: [low_latency, tools, low_cost]
+prefer_tags: [tier:edge, family:gemma]
+must_have: [function_calling]
+fallback_chain:
+  # 1. Fast local model with tools
+  - capability_match: [function_calling, low_latency]
+    prefer_local: true
+  # 2. Any local model with tools (latency budget may be exceeded — cap relaxed
+  #    via cloud branch below if still too slow)
+  - capability_match: [function_calling]
+    prefer_local: true
+  # 3. Gemini Flash — fast cloud fallback
+  - capability_match: [function_calling, low_latency]
+    privacy_class: cloud-ok
+on_no_candidate: use_default_gemini

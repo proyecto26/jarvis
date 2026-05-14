@@ -1,0 +1,17 @@
+agent: judge_filter
+# Judge filter gates user-facing actions — quality matters, latency moderate.
+# Defaults to cloud since ethics evaluation benefits from a strong base model
+# until we fine-tune a local ethics adapter.
+default_privacy_class: cloud-ok
+max_latency_ms: 1500
+prefer: [reasoning, function_calling, tools]
+prefer_tags: [role:balanced]
+must_have: [reasoning, function_calling]
+fallback_chain:
+  # 1. Local reasoning model with ethics adapter (when adapter manifest lands)
+  - capability_match: [reasoning, function_calling]
+    prefer_local: true
+  # 2. Gemini balanced tier
+  - capability_match: [reasoning, function_calling]
+    privacy_class: cloud-ok
+on_no_candidate: use_default_gemini

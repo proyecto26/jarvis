@@ -41,11 +41,11 @@
 ## 5. Nightly Consolidation Worker (~1.5 days)
 
 - [x] 5.1 Implement `triforce/memory/consolidation.py` — `ConsolidationWorker` class with `run_nightly()` entry point
-- [ ] 5.2 Implement `run_fade_decay()` — *Stub: returns zero counts. Needs to walk `EpisodicMemory._last_access` and remove entries below the threshold.*
-- [ ] 5.3 Implement `compress_old_episodes(threshold_days=30)` — *Stub: depends on an LLM call path. Defer until `add-specialized-llm-router` is in place so we can pick a cheap local model for compression.*
-- [ ] 5.4 Implement `run_ssgm_audit()` — *Stub: needs to iterate recent beliefs and call `SSGMGuard.check_conflict()` per belief, then write findings to today's journal under `open_questions`.*
-- [ ] 5.5 Implement `consolidate_journal_tier(date_range)` — *Stub: TiMem-style weekly summaries; deferred with 5.3 (same LLM dependency).*
-- [x] 5.6 Expose `run_nightly()` as entry point callable from `ConsolidationWorkflow` (already invoked via Temporal in `triforce/temporal/workflows.py`)
+- [x] 5.2 Implement `run_fade_decay()` — walks `EpisodicMemory._last_access`, computes Ebbinghaus decay strength per entry, reports decayed/removed/preserved counts and forgets access records below threshold
+- [ ] 5.3 Implement `compress_old_episodes(threshold_days=30)` — *Deferred (still): needs LLM router enabled for cheap local compression. Returns `status: "deferred"` with a clear reason field.*
+- [x] 5.4 Implement `run_ssgm_audit()` — iterates beliefs created in the last 24 h and calls `SSGMGuard.check_conflict()` per belief; conflicts surface in the audit writeback to today's journal under `open_questions`
+- [ ] 5.5 Implement `consolidate_journal_tier(date_range)` — *Deferred with §5.3 (same LLM dependency).*
+- [x] 5.6 Expose `run_nightly()` as entry point callable from `ConsolidationWorkflow` (already invoked via Temporal in `triforce/temporal/workflows.py`); audit writeback now appends a summary entry to today's journal `open_questions` section when there's anything worth surfacing
 
 ## 6. Agent Integration (~1 day)
 
