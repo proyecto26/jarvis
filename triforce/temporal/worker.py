@@ -10,13 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
+
+from triforce.config import Config
 
 logger = logging.getLogger(__name__)
-
-TASK_QUEUE = "jarvis-trinity"
-TEMPORAL_ADDRESS = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
-TEMPORAL_NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "default")
 
 
 async def start_worker() -> None:
@@ -43,19 +40,23 @@ async def start_worker() -> None:
 
     logger.info(
         "Connecting to Temporal at %s (namespace=%s)",
-        TEMPORAL_ADDRESS,
-        TEMPORAL_NAMESPACE,
+        Config.TEMPORAL_ADDRESS,
+        Config.TEMPORAL_NAMESPACE,
     )
-    client = await Client.connect(TEMPORAL_ADDRESS, namespace=TEMPORAL_NAMESPACE)
+    client = await Client.connect(
+        Config.TEMPORAL_ADDRESS, namespace=Config.TEMPORAL_NAMESPACE
+    )
 
     worker = Worker(
         client,
-        task_queue=TASK_QUEUE,
+        task_queue=Config.TEMPORAL_TASK_QUEUE,
         workflows=[AwakeWorkflow, DreamWorkflow, ConsolidationWorkflow],
         activities=[generate_content, dynamic_tool_activity],
     )
 
-    logger.info("Jarvis Trinity worker started on task queue: %s", TASK_QUEUE)
+    logger.info(
+        "DANTE Trinity worker started on task queue: %s", Config.TEMPORAL_TASK_QUEUE
+    )
     await worker.run()
 
 

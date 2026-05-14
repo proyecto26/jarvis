@@ -53,6 +53,7 @@ class BeliefMutation(BaseModel):
     belief: str = ""
     strength: float = 0.5
     reason: str = ""
+    source_episode_id: Optional[str] = None
 
 
 class JournalMetadata(BaseModel):
@@ -62,6 +63,7 @@ class JournalMetadata(BaseModel):
     mode_cycles: dict[str, int] = Field(default_factory=dict)
     active_skills: list[str] = Field(default_factory=list)
     dominant_theme: str = ""
+    cognitive_load_score: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
 class JournalEntry(BaseModel):

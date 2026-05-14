@@ -2,15 +2,20 @@
 
 Phase 1 established the Trinity (Dreamer, Judge, Executor) as a running ADK multi-agent system with a file-based daily journal (`journal/YYYY-MM-DD.md`) and a flat JSON belief store (`memory/judge_beliefs.json`). These are sufficient for early experimentation but inadequate for a system that must learn and reason over time.
 
-A 20-paper research survey (RESEARCH_MEMORY.md, March 2026) identified the precise gaps and the winning architecture. The core finding: **memory and retrieval are different problems**. The journal solves storage; this phase solves retrieval and temporal reasoning.
+### Plan Revision (May 2026)
+
+**Original plan (March 2026)** specified Mem0 + ChromaDB + Graphiti + KuzuDB. Between March and May, an autoresearch experiment loop (17 logged experiments — `autoresearch.md`, `autoresearch.jsonl`) benchmarked six candidate stacks against a synthetic 100-day journal corpus. Result: **BM25 + sentence-transformers + Grafeo** scored 89.28 composite vs the originally-planned stack's projected ceiling. The plan was updated in place to reflect what was actually built; this design.md retains the original research provenance for traceability but the architectural decisions section now describes the winning architecture.
+
+A 20-paper research survey (RESEARCH_MEMORY.md, March 2026) identified the original gaps. The core finding still applies: **memory and retrieval are different problems**. The journal solves storage; this phase solves retrieval and temporal reasoning.
 
 Key research inputs that shaped the architecture:
-- **TiMem (Jan 2026)**: 3-tier hierarchy (raw events → episode summaries → long-term beliefs) with nightly consolidation beats "store everything + retrieve at query time" by 31% on long-horizon QA
-- **Graphiti (2025)**: Only open-source framework with native temporal belief tracking — facts carry validity windows, enabling point-in-time queries
-- **Mem0 (2025)**: Hybrid semantic + BM25 retrieval over episodic memory; 26% better than full-context on LOCOMO benchmark
-- **SSGM (March 2026)**: Memory drift and belief poisoning are real systemic risks; conflict detection before overwrite is essential
-- **FadeMem (Jan 2026)**: Ebbinghaus decay for agent memory — unused memories weaken, reinforced memories strengthen
-- **ActMem (Feb 2026)**: Retrieved memories should be formatted as reasoning chains, not flat fact lists
+- **TiMem (Jan 2026)**: 3-tier hierarchy (raw events → episode summaries → long-term beliefs) with nightly consolidation beats "store everything + retrieve at query time" by 31% on long-horizon QA — preserved in the consolidation worker
+- **Graphiti (2025)**: Original inspiration for temporal belief tracking — concept preserved; backend swapped from Graphiti+KuzuDB to Grafeo (single embedded Rust graph DB, simpler operations)
+- **Mem0 (2025)**: Hybrid semantic + BM25 retrieval was the conceptual seed — implemented locally via in-process BM25 + sentence-transformers, no Mem0 dependency
+- **SSGM (March 2026)**: Memory drift and belief poisoning are real systemic risks; conflict detection before overwrite is essential — implemented in `triforce/memory/ssgm.py`
+- **FadeMem (Jan 2026)**: Ebbinghaus decay for agent memory — exposed via `EpisodicMemory.get_decay_strength()`
+- **ActMem (Feb 2026)**: Retrieved memories should be formatted as reasoning chains, not flat fact lists — partially adopted (current results are dicts with score+content; reasoning-chain formatting is a future enhancement)
+- **PageIndex (VectifyAI, 2025)**: Hierarchical tree navigation — the autoresearch loop briefly evaluated a pure-Python version (BM25 + tree beam search via TF-IDF cosine, no external LLM API) that scored 85.88 composite, behind the unified winner. Lessons (lazy index rebuilds, weighted RRF) were preserved.
 
 ## Goals / Non-Goals
 

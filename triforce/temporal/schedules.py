@@ -11,13 +11,14 @@ Install with: pip install jarvis-triforce[temporal]
 from __future__ import annotations
 
 import logging
-import os
+
+from triforce.config import Config
 
 logger = logging.getLogger(__name__)
 
-DREAM_INTERVAL_HOURS = int(os.getenv("DREAM_INTERVAL_HOURS", "6"))
-CONSOLIDATION_HOUR_UTC = int(os.getenv("CONSOLIDATION_HOUR_UTC", "3"))
-TASK_QUEUE = "jarvis-trinity"
+DREAM_INTERVAL_HOURS = Config.DREAM_INTERVAL_HOURS
+CONSOLIDATION_HOUR_UTC = Config.CONSOLIDATION_HOUR_UTC
+TASK_QUEUE = Config.TEMPORAL_TASK_QUEUE
 
 
 async def create_dream_schedule(client: object) -> str:

@@ -8,15 +8,15 @@ The system SHALL implement a `ConsolidationWorker` class in `triforce/memory/con
 - **THEN** it executes in order: (1) `run_fade_decay()`, (2) `compress_old_episodes()`, (3) `run_ssgm_audit()`, (4) `consolidate_journal_tier()`
 
 ### Requirement: FadeMem decay
-The system SHALL apply the Ebbinghaus forgetting curve to Mem0 episodic entries.
+The system SHALL apply the Ebbinghaus forgetting curve to episodic entries (backend-neutral — applies to whichever index `EpisodicMemory` is using).
 
 #### Scenario: Strength decay calculation
 - **WHEN** `run_fade_decay()` runs
-- **THEN** for each Mem0 entry, strength is updated as: `strength × e^(−0.02 × days_since_last_access)`
+- **THEN** for each indexed entry, strength is updated as: `strength × e^(−0.02 × days_since_last_access)`
 
 #### Scenario: Entry removal below threshold
 - **WHEN** an episodic entry's computed strength drops below 0.05
-- **THEN** it is removed from the Mem0 index (but the source `.md` journal file is NOT deleted)
+- **THEN** it is removed from the episodic index (but the source `.md` journal file is NOT deleted)
 
 #### Scenario: Reinforced entries preserve strength
 - **WHEN** `reinforce(entry_id)` was called within the current day
@@ -28,12 +28,12 @@ The system SHALL compress journal episodes older than 30 days into learning summ
 #### Scenario: Compression of old judgments
 - **WHEN** `compress_old_episodes(threshold_days=30)` runs
 - **THEN** all Judgment entries older than 30 days are grouped by week and compressed via LLM into a single `LearningEntry` per week
-- **AND** the compressed entry replaces the originals in the Mem0 index
+- **AND** the compressed entry replaces the originals in the episodic index
 - **AND** the original `.md` journal files are unchanged
 
 #### Scenario: High cognitive-load entries preserved verbatim
 - **WHEN** a `JournalEntry` has `cognitive_load_score >= 0.8`
-- **THEN** it is NOT compressed regardless of age — kept verbatim in the Mem0 index
+- **THEN** it is NOT compressed regardless of age — kept verbatim in the episodic index
 
 ### Requirement: SSGM nightly audit
 The system SHALL run a nightly audit of recent belief mutations for conflicts.
