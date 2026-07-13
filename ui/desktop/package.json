@@ -1,0 +1,19 @@
+{
+  "name": "@dante/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "DANTE desktop shell — Electron wrapper around ui/web (contextIsolation on, nodeIntegration off)",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc && electron . --dev",
+    "start": "tsc && electron .",
+    "smoke": "tsc && electron . --smoke",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "electron": "^31.0.0",
+    "typescript": "^5.5.0"
+  }
+}
