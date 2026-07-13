@@ -1,0 +1,21 @@
+agent: consolidation
+# Nightly consolidation is a batch job — nobody is waiting, so the latency
+# budget is huge. Cost matters most: prefer the cheapest capable local model
+# (Gemma edge tier). Cloud fallback is allowed — journal summaries are the
+# agent's own notes, not user-private data.
+default_privacy_class: local-preferred
+max_latency_ms: 60000
+prefer: [low_cost, reasoning]
+prefer_tags: [tier:edge, family:gemma]
+must_have: [reasoning]
+fallback_chain:
+  # 1. Cheapest local model that can still reason (gemma-4-4b class)
+  - capability_match: [reasoning, low_cost]
+    prefer_local: true
+  # 2. Any local reasoning model (nemotron / bigger gemma)
+  - capability_match: [reasoning]
+    prefer_local: true
+  # 3. Cloud tier — summaries are low-sensitivity, cost stays low per run
+  - capability_match: [reasoning]
+    privacy_class: cloud-ok
+on_no_candidate: use_default_gemini

@@ -64,7 +64,10 @@ def get_handler(name: str) -> Any:
 # ---------------------------------------------------------------------------
 
 try:
+    from collections.abc import Sequence
+
     from temporalio import activity
+    from temporalio.common import RawValue
 
     @activity.defn
     async def generate_content(request: GeminiChatRequest) -> GeminiChatResponse:
@@ -128,21 +131,28 @@ try:
         )
 
     @activity.defn(dynamic=True)
-    async def dynamic_tool_activity(activity_name: str, args: list[Any]) -> dict:
+    async def dynamic_tool_activity(args: Sequence[RawValue]) -> dict:
         """Dynamic Activity that dispatches to any registered Jarvis tool.
 
         Uses @activity.defn(dynamic=True) so any unregistered activity type
-        name is routed here. The activity_name is the tool name.
+        name is routed here. Temporal's dynamic-activity contract requires a
+        single ``Sequence[RawValue]`` parameter; the tool name is the invoked
+        activity type (``activity.info().activity_type``), so workflows call
+        tools by name string (e.g. ``workflow.execute_activity("run_consolidation")``).
         """
+        activity_name = activity.info().activity_type
         handler = get_handler(activity_name)
         if handler is None:
             raise ValueError(f"No tool handler registered for: {activity_name}")
 
-        # Parse arguments — handle both dict and Pydantic model args
-        if args and len(args) == 1 and isinstance(args[0], dict):
-            result = await handler(**args[0]) if _is_async(handler) else handler(**args[0])
-        elif args:
-            result = await handler(*args) if _is_async(handler) else handler(*args)
+        converter = activity.payload_converter()
+        values = converter.from_payloads([arg.payload for arg in args])
+
+        # Parse arguments — handle both dict and positional args
+        if values and len(values) == 1 and isinstance(values[0], dict):
+            result = await handler(**values[0]) if _is_async(handler) else handler(**values[0])
+        elif values:
+            result = await handler(*values) if _is_async(handler) else handler(*values)
         else:
             result = await handler() if _is_async(handler) else handler()
 
@@ -171,7 +181,7 @@ except ImportError:
             "Install with: pip install jarvis-triforce[temporal]"
         )
 
-    async def dynamic_tool_activity(activity_name: str, args: list) -> dict:
+    async def dynamic_tool_activity(args: list) -> dict:
         """Stub — temporalio not installed."""
         raise NotImplementedError(
             "dynamic_tool_activity requires temporalio. "

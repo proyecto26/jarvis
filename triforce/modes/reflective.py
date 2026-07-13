@@ -3,6 +3,7 @@
 from google.adk.agents import Agent
 
 from triforce.config import Config
+from triforce.tools.knowledge_tools import write_reflection
 from triforce.tools.state_tools import append_to_state
 
 REFLECTIVE_INSTRUCTION = """You are Jarvis in Reflective Mode.
@@ -25,7 +26,10 @@ INSTRUCTIONS:
    - 'reflection': Your integrated understanding of what happened.
    - 'learnings': Key takeaways.
    - 'belief_updates': Any proposed changes to Judge beliefs (if applicable).
-5. Synthesize and present the reflection to the user.
+5. Use write_reflection to persist the reflection to the knowledge base,
+   passing decision_refs for the Decision documents you evaluated (when
+   identifiable from the context).
+6. Synthesize and present the reflection to the user.
 
 Reflection is not summary. It is integration — connecting what happened
 to what you already know, and updating your model of the world.
@@ -36,5 +40,5 @@ reflective_session = Agent(
     model=Config.JUDGE_MODEL,
     description="Reflective mode: processes recent significant events, extracts learnings, and proposes belief updates.",
     instruction=REFLECTIVE_INSTRUCTION,
-    tools=[append_to_state],
+    tools=[append_to_state, write_reflection],
 )

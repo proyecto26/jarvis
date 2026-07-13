@@ -5,8 +5,7 @@ description: >
   Use when any agent needs to recall past decisions, outcomes, or patterns from
   Jarvis's experience history. Currently a stub — full implementation pending Phase 2
   Mem0 integration. Falls back to recall_similar_decisions tool.
-compatibility:
-  - google-adk
+compatibility: google-adk
 metadata:
   scope: shared
   phase: 2

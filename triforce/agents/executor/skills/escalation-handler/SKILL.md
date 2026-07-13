@@ -5,8 +5,7 @@ description: >
   Determines free execution (1-3), logged execution (4-5), Judge-required (6-7),
   and hard stops (8-10). Use when the Executor receives an action and needs to
   decide whether to execute, log, escalate, or stop.
-compatibility:
-  - google-adk
+compatibility: google-adk
 metadata:
   scope: executor
   triggers:

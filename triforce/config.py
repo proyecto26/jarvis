@@ -26,6 +26,7 @@ class Config:
     # --- Paths ---
     JOURNAL_DIR: Path = PROJECT_ROOT / "journal"
     BELIEFS_PATH: Path = PROJECT_ROOT / "memory" / "judge_beliefs.json"
+    KNOWLEDGE_DIR: Path = PROJECT_ROOT / "knowledge"
 
     # --- Temporal durability layer ---
     TEMPORAL_ADDRESS: str = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
@@ -33,6 +34,12 @@ class Config:
     TEMPORAL_TASK_QUEUE: str = os.getenv("TEMPORAL_TASK_QUEUE", "jarvis-trinity")
     DREAM_INTERVAL_HOURS: int = int(os.getenv("DREAM_INTERVAL_HOURS", "6"))
     CONSOLIDATION_HOUR_UTC: int = int(os.getenv("CONSOLIDATION_HOUR_UTC", "3"))
+    # Accumulated judgment importance (sum of action_weights) that triggers a
+    # reflection pass ahead of the nightly schedule (Stanford generative-agents
+    # pattern).
+    REFLECTION_IMPORTANCE_THRESHOLD: int = int(
+        os.getenv("REFLECTION_IMPORTANCE_THRESHOLD", "15")
+    )
 
     # --- Memory backend selection ---
     # Embedding backend used by triforce/memory/episodic.py.

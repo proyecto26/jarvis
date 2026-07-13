@@ -5,8 +5,7 @@ description: >
   conflicts before writing, uses a decision tree (merge/supersede/coexist/review),
   and enforces required fields. Use when the Judge needs to update, add, or modify
   its beliefs based on new experience or evidence.
-compatibility:
-  - google-adk
+compatibility: google-adk
 metadata:
   scope: judge
   triggers:

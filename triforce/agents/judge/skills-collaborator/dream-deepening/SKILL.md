@@ -4,8 +4,7 @@ description: >
   Deepens Dreamer's ideas by tracing seed lineage, connecting to past experience,
   and detecting breakthroughs. Use when the Judge is in collaborator mode during
   dream cycles. Activates when evaluating dream seeds for breakthrough potential.
-compatibility:
-  - google-adk
+compatibility: google-adk
 metadata:
   scope: judge_collaborator
   triggers:

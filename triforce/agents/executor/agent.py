@@ -22,17 +22,18 @@ try:
     from google.adk.tools.skill_toolset import SkillToolset
 
     _skill_dirs = [
-        p for p in EXECUTOR_SKILLS.iterdir() if p.is_dir() and not p.name.startswith("_")
-    ] + [
-        p for p in SHARED_SKILLS.iterdir() if p.is_dir() and not p.name.startswith("_")
+        p
+        for base in (EXECUTOR_SKILLS, SHARED_SKILLS)
+        for p in base.iterdir()
+        if p.is_dir() and not p.name.startswith("_") and (p / "SKILL.md").is_file()
     ]
     if _skill_dirs:
         _skill_toolsets = [
             SkillToolset(skills=[load_skill_from_dir(p) for p in _skill_dirs])
         ]
         logger.info("Executor: loaded %d skills", len(_skill_dirs))
-except (ImportError, AttributeError) as exc:
-    logger.warning("ADK SkillToolset not available — running without skills: %s", exc)
+except Exception as exc:  # noqa: BLE001 — skills are optional; never crash imports
+    logger.warning("ADK skills unavailable or malformed — running without skills: %s", exc)
 
 executor_agent = Agent(
     name="executor",

@@ -5,8 +5,7 @@ description: >
   Executor's responses. Use for EVERY response the Executor sends to the outside
   world. Activates on all external communication — WhatsApp messages, web responses,
   API outputs, and any user-facing text.
-compatibility:
-  - google-adk
+compatibility: google-adk
 metadata:
   scope: executor
   triggers:

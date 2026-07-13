@@ -32,3 +32,11 @@ all = [
     "jarvis-triforce[memory]",
     "jarvis-triforce[temporal]",
 ]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,8 +1,9 @@
 """Journal file I/O — create, load, and append to daily Markdown files."""
 
 import json
+import logging
 import tempfile
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from triforce.config import Config
@@ -16,6 +17,8 @@ from triforce.memory.schema import (
     Learning,
 )
 
+logger = logging.getLogger(__name__)
+
 SECTION_MODELS = {
     "dreams": DreamCycle,
     "judgments": Judgment,
@@ -23,6 +26,9 @@ SECTION_MODELS = {
     "learnings": Learning,
     "belief_mutations": BeliefMutation,
 }
+
+# Executions carry no action_weight field — they count at a default weight.
+_EXECUTION_DEFAULT_WEIGHT = 1
 
 
 def _journal_path(entry_date: str) -> Path:
@@ -42,8 +48,13 @@ def _atomic_write(path: Path, content: str):
     _ensure_dir()
     tmp = Path(tempfile.mktemp(dir=path.parent, suffix=".tmp"))
     try:
-        tmp.write_text(content)
-        tmp.rename(path)
+        # Explicit UTF-8 — the platform default (cp1252 on Windows) would
+        # mojibake em dashes/accents when consolidation reads these files
+        # back as UTF-8, and reject anything outside cp1252 entirely.
+        tmp.write_text(content, encoding="utf-8")
+        # ``replace`` (not ``rename``) — journal files are rewritten on every
+        # append, and ``rename`` fails on Windows when the target exists.
+        tmp.replace(path)
     except Exception:
         tmp.unlink(missing_ok=True)
         raise
@@ -148,7 +159,7 @@ def load_entry(entry_date: str | None = None) -> JournalEntry | None:
     path = _json_path(entry_date)
     if not path.exists():
         return None
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     return JournalEntry(**data)
 
 
@@ -170,11 +181,18 @@ def save_entry(entry: JournalEntry) -> Path:
 def append_to_section(
     section: str, content, entry_date: str | None = None
 ) -> Path:
-    """Append content to a section of a journal entry. Creates entry if needed."""
+    """Append content to a section of a journal entry. Creates entry if needed.
+
+    Judgment appends additionally emit an OKF Decision document and feed the
+    importance accumulator; Execution appends feed the accumulator at a
+    default weight of 1. Both hooks are additive — journal output is
+    unchanged, and hook failures are logged and never break the write.
+    """
     if entry_date is None:
         entry_date = date.today().isoformat()
     entry = load_entry(entry_date) or create_entry(entry_date)
 
+    appended = None
     section_list = getattr(entry, section, None)
     if section_list is not None and isinstance(section_list, list):
         model_cls = SECTION_MODELS.get(section)
@@ -182,5 +200,132 @@ def append_to_section(
             section_list.append(model_cls(**content))
         else:
             section_list.append(content)
+        appended = section_list[-1]
 
-    return save_entry(entry)
+    path = save_entry(entry)
+
+    # Additive hooks — must never break the journal write path.
+    if appended is not None:
+        try:
+            _record_importance(section, appended)
+        except Exception as exc:
+            logger.warning("Importance accumulator update failed: %s", exc)
+        if section == "judgments":
+            try:
+                _emit_decision_doc(appended)
+            except Exception as exc:
+                logger.warning("OKF Decision doc emission failed: %s", exc)
+
+    return path
+
+
+# ---------------------------------------------------------------------------
+# Importance accumulation — Stanford generative-agents reflection trigger
+# ---------------------------------------------------------------------------
+
+
+def _accumulator_path() -> Path:
+    return Config.JOURNAL_DIR / ".importance-accumulator.json"
+
+
+def _load_accumulator() -> dict:
+    try:
+        return json.loads(_accumulator_path().read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"accumulated": 0}
+
+
+def accumulated_importance() -> int:
+    """The running sum of action weights since the last reflection."""
+    return int(_load_accumulator().get("accumulated", 0))
+
+
+def add_importance(weight: int) -> int:
+    """Add weight to the persistent accumulator. Returns the new total."""
+    state = _load_accumulator()
+    state["accumulated"] = int(state.get("accumulated", 0)) + int(weight)
+    state["updated"] = datetime.utcnow().isoformat()
+    _atomic_write(_accumulator_path(), json.dumps(state, indent=2))
+    return state["accumulated"]
+
+
+def check_reflection_due() -> bool:
+    """True when accumulated importance crossed the reflection threshold."""
+    return accumulated_importance() >= Config.REFLECTION_IMPORTANCE_THRESHOLD
+
+
+def reset_accumulator(consumed: int | None = None) -> None:
+    """Reset the importance accumulator (call after a reflection pass runs).
+
+    When ``consumed`` is given, only that much is subtracted (floored at 0)
+    so importance accrued between the caller's check and this reset is
+    preserved — avoiding a check-then-reset lost update. Without ``consumed``
+    the accumulator is zeroed.
+    """
+    state = _load_accumulator()
+    if consumed is None:
+        remaining = 0
+    else:
+        remaining = max(0, int(state.get("accumulated", 0)) - int(consumed))
+    state["accumulated"] = remaining
+    state["updated"] = datetime.utcnow().isoformat()
+    _atomic_write(_accumulator_path(), json.dumps(state, indent=2))
+
+
+def _record_importance(section: str, item) -> None:
+    """Feed the accumulator from a freshly appended journal item."""
+    if section == "judgments":
+        weight = getattr(item, "action_weight", _EXECUTION_DEFAULT_WEIGHT)
+    elif section == "executions":
+        weight = _EXECUTION_DEFAULT_WEIGHT
+    else:
+        return
+    add_importance(weight)
+
+
+# ---------------------------------------------------------------------------
+# OKF Decision emission — additive audit trail for Judgment appends
+# ---------------------------------------------------------------------------
+
+
+def _emit_decision_doc(judgment) -> Path | None:
+    """Persist a Judgment as an OKF Decision document.
+
+    Links current (non-invalidated) Belief docs whose belief text appears in
+    the judgment's reasoning. Lazy OKF import keeps the journal importable
+    even if optional dependencies are missing.
+    """
+    from triforce.memory.okf import OKFBundle, OKFDocument
+
+    bundle = OKFBundle()
+    reasoning = getattr(judgment, "reasoning", "") or ""
+
+    related: list[tuple[str, str]] = []
+    if reasoning:
+        for doc_path, doc in bundle.documents("beliefs"):
+            if doc.extras.get("invalidated_at"):
+                continue
+            if doc.title and doc.title.lower() in reasoning.lower():
+                related.append((doc.title, f"/beliefs/{doc_path.name}"))
+
+    body_lines = ["# Reasoning", "", reasoning or "*No reasoning recorded.*", ""]
+    if related:
+        body_lines.extend(["## Related beliefs", ""])
+        body_lines.extend(f"* [{title}]({link})" for title, link in related)
+        body_lines.append("")
+
+    doc = OKFDocument(
+        type="Decision",
+        title=judgment.action or "Judgment",
+        description=(
+            f"Verdict: {judgment.verdict} (weight {judgment.action_weight}/10)"
+        ),
+        tags=["judge", "decision"],
+        timestamp=judgment.timestamp,
+        extras={
+            "verdict": judgment.verdict,
+            "action_weight": judgment.action_weight,
+        },
+        body="\n".join(body_lines),
+    )
+    return bundle.write(doc, "decisions", action="Judgment")

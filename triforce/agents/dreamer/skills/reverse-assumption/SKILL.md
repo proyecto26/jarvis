@@ -4,8 +4,7 @@ description: >
   Inverts implicit assumptions in dream seeds to generate structurally novel ideas.
   Use when seeds repeat themes across 2+ cycles or produce only incremental variations.
   Activates on stale, converging, or overly similar dream outputs.
-compatibility:
-  - google-adk
+compatibility: google-adk
 metadata:
   scope: dreamer
   triggers:

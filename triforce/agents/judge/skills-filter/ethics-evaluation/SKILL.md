@@ -5,8 +5,7 @@ description: >
   with J.D.'s values, reversibility, and action weight. Use when the Judge is in filter
   mode and needs to assess whether an action should be approved, modified, or rejected.
   Activates on any action that requires ethical assessment before execution.
-compatibility:
-  - google-adk
+compatibility: google-adk
 metadata:
   scope: judge_filter
   triggers:

@@ -98,7 +98,11 @@ def update_beliefs(
         return {
             "status": "conflict_detected",
             "conflict": conflict.to_dict(),
-            "action_required": "Resolve via merge, supersede, coexist, or review before writing.",
+            "action_required": (
+                "Resolve via merge, supersede, coexist, or review before "
+                "writing. To supersede, call the supersede_beliefs tool with "
+                "the conflicting belief text as old_belief."
+            ),
         }
 
     # No conflict — write the belief
@@ -115,6 +119,57 @@ def update_beliefs(
         "status": "created",
         "belief": new_belief["belief"],
         "strength": new_belief["strength"],
+    }
+
+
+def supersede_beliefs(
+    old_belief: str,
+    new_belief: str,
+    reason: str,
+    strength: float,
+    tool_context: ToolContext,
+) -> dict:
+    """Revise an existing belief, recording an append-only supersede chain.
+
+    Use this INSTEAD of update_beliefs whenever you are changing what a
+    belief says (including when update_beliefs reported a conflict with
+    recommendation 'supersede'). The runtime store is updated in place while
+    the OKF knowledge bundle keeps both documents: the old one is invalidated
+    (never deleted) and the new one links back to it — the audit trail of how
+    the belief evolved.
+
+    Args:
+        old_belief: The exact text of the belief being revised.
+        new_belief: The revised belief statement.
+        reason: Why the belief changed; required for auditability.
+        strength: Strength of the revised belief, 0.0 to 1.0.
+    """
+    from triforce.memory.beliefs import supersede_belief
+    from triforce.memory.ssgm import SSGMGuard
+
+    ssgm_score = None
+    try:
+        report = SSGMGuard().check_conflict(new_belief)
+        if report.has_conflict:
+            ssgm_score = round(report.similarity_score, 3)
+    except Exception as exc:  # noqa: BLE001 — the score is advisory only
+        logger.warning("SSGM score unavailable for supersede: %s", exc)
+
+    result = supersede_belief(
+        old_belief,
+        new_belief,
+        reason=reason,
+        ssgm_score=ssgm_score,
+        strength=strength,
+    )
+    return {
+        "status": "superseded",
+        "belief": result["belief"]["belief"],
+        "strength": result["belief"]["strength"],
+        "okf_new_path": (
+            str(result["okf_new_path"]) if result["okf_new_path"] else None
+        ),
+        "okf_old_invalidated": result["okf_old_invalidated"],
     }
 
 

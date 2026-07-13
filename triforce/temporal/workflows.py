@@ -11,12 +11,18 @@ Install with: pip install jarvis-triforce[temporal]
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Any
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
+
+# How often the run_consolidation activity heartbeats. Must be comfortably
+# below the workflow's heartbeat_timeout (30s) so healthy long-running LLM
+# work is never killed.
+_CONSOLIDATION_HEARTBEAT_SECONDS = 10
 
 # ---------------------------------------------------------------------------
 # Workflow input/output data classes (always importable)
@@ -62,11 +68,96 @@ class DreamWorkflowResult:
 
 
 # ---------------------------------------------------------------------------
+# Consolidation + reflection tool handlers (always importable — no temporalio)
+# ---------------------------------------------------------------------------
+
+
+def check_reflection_due_activity() -> dict:
+    """Tool handler: is an importance-triggered reflection due?
+
+    Consults the journal's persistent importance accumulator (Stanford
+    generative-agents pattern). The nightly schedule remains the fallback
+    trigger — this only surfaces early-reflection pressure.
+    """
+    from triforce.memory import journal
+
+    return {
+        "reflection_due": journal.check_reflection_due(),
+        "accumulated": journal.accumulated_importance(),
+    }
+
+
+def reset_accumulator_activity(consumed: int | None = None) -> dict:
+    """Tool handler: reset the importance accumulator after a reflection ran.
+
+    ``consumed`` is the accumulated importance the caller observed when it
+    decided a reflection was due; only that much is subtracted so importance
+    accrued while the (long) consolidation ran is never silently discarded.
+    When ``consumed`` is omitted the accumulator is zeroed.
+    """
+    from triforce.memory import journal
+
+    journal.reset_accumulator(consumed=consumed)
+    return {"status": "reset"}
+
+
+def _temporal_heartbeat() -> Optional[Callable[[], None]]:
+    """Return ``activity.heartbeat`` when running inside a Temporal activity."""
+    try:
+        from temporalio import activity
+
+        if activity.in_activity():
+            return activity.heartbeat
+    except ImportError:
+        pass
+    return None
+
+
+async def run_consolidation_activity() -> dict:
+    """Tool handler: run the full nightly consolidation pipeline.
+
+    The pipeline can spend minutes in LLM calls, so while it runs a
+    background task heartbeats every ``_CONSOLIDATION_HEARTBEAT_SECONDS`` —
+    keeping the workflow's ``heartbeat_timeout`` a dead-worker detector
+    instead of a killer of healthy long-running work. Outside a Temporal
+    activity context (direct calls, tests) heartbeating is skipped.
+    """
+    from triforce.memory.consolidation import ConsolidationWorker
+
+    heartbeat = _temporal_heartbeat()
+
+    async def _beat() -> None:
+        while True:
+            heartbeat()  # type: ignore[misc]
+            await asyncio.sleep(_CONSOLIDATION_HEARTBEAT_SECONDS)
+
+    beat_task = asyncio.create_task(_beat()) if heartbeat is not None else None
+    try:
+        return await ConsolidationWorker().run_nightly()
+    finally:
+        if beat_task is not None:
+            beat_task.cancel()
+
+
+def _register_tool_handlers() -> None:
+    """Register tool handlers for dynamic activity dispatch."""
+    from triforce.temporal.activities import register_tool
+
+    register_tool("check_reflection_due", check_reflection_due_activity)
+    register_tool("reset_accumulator", reset_accumulator_activity)
+    register_tool("run_consolidation", run_consolidation_activity)
+
+
+_register_tool_handlers()
+
+
+# ---------------------------------------------------------------------------
 # Temporal Workflows (guarded import)
 # ---------------------------------------------------------------------------
 
 try:
     from temporalio import workflow
+    from temporalio.common import RetryPolicy
 
     with workflow.unsafe.imports_passed_through():
         from triforce.temporal.activities import (
@@ -126,9 +217,11 @@ try:
                 # Execute each tool call as a separate durable activity
                 tool_results = []
                 for fc in response.function_calls:
+                    # Invoked by name string — unregistered activity types are
+                    # routed to dynamic_tool_activity on the worker.
                     result = await workflow.execute_activity(
-                        dynamic_tool_activity,
-                        args=[fc["name"], [fc.get("args", {})]],
+                        fc["name"],
+                        args=[fc.get("args", {})],
                         start_to_close_timeout=timedelta(seconds=30),
                     )
                     tool_calls_made += 1
@@ -222,19 +315,53 @@ try:
 
         Wraps ConsolidationWorker.run_nightly() as a durable workflow
         with heartbeating for long-running consolidation tasks.
+
+        Before consolidating, consults the importance accumulator
+        (check_reflection_due) so an importance-triggered reflection is
+        acknowledged and the accumulator is reset once consolidation ran.
+        The nightly schedule remains the fallback trigger — accumulator
+        failures degrade gracefully and never block consolidation.
         """
 
         @workflow.run
         async def run(self) -> dict:
             """Execute nightly consolidation as a single activity."""
-            from triforce.temporal.activities import dynamic_tool_activity
+            reflection_due = False
+            observed_importance = 0
+            try:
+                check = await workflow.execute_activity(
+                    "check_reflection_due",
+                    start_to_close_timeout=timedelta(seconds=10),
+                    retry_policy=RetryPolicy(maximum_attempts=2),
+                )
+                reflection_due = bool(check.get("reflection_due"))
+                observed_importance = int(check.get("accumulated", 0))
+            except Exception:
+                # Accumulator unavailable — the schedule is the trigger.
+                reflection_due = False
 
             result = await workflow.execute_activity(
-                dynamic_tool_activity,
-                args=["run_consolidation", []],
+                "run_consolidation",
                 start_to_close_timeout=timedelta(minutes=10),
                 heartbeat_timeout=timedelta(seconds=30),
             )
+
+            if reflection_due:
+                try:
+                    # Subtract only the importance observed BEFORE the (long)
+                    # consolidation activity — weight accrued while it ran
+                    # must survive the reset (no check-then-reset lost update).
+                    await workflow.execute_activity(
+                        "reset_accumulator",
+                        args=[{"consumed": observed_importance}],
+                        start_to_close_timeout=timedelta(seconds=10),
+                        retry_policy=RetryPolicy(maximum_attempts=2),
+                    )
+                except Exception:
+                    pass  # Next run re-checks; the accumulator only grows.
+
+            if isinstance(result, dict):
+                result["reflection_due"] = reflection_due
             return result
 
     logger.info("Temporal workflows registered successfully")

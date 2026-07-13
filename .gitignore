@@ -1,6 +1,8 @@
 # Runtime outputs only — specs should be committed
 journal/*
 !journal/.gitkeep
+knowledge/*
+!knowledge/.gitkeep
 *.pyc
 __pycache__/
 .env
@@ -11,3 +13,6 @@ dist/
 # Autoresearch session files
 autoresearch.jsonl
 run.log
+
+# Reference projects cloned for study — not part of the codebase
+examples/

@@ -4,8 +4,7 @@ description: >
   Imports structural mechanisms from distant domains to generate novel ideas.
   Use when dream seeds are coherent but unsurprising — good quality but lacking novelty.
   Activates on well-formed but predictable seed patterns.
-compatibility:
-  - google-adk
+compatibility: google-adk
 metadata:
   scope: dreamer
   triggers:

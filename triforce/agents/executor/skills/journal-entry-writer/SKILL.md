@@ -5,8 +5,7 @@ description: >
   conform to the Pydantic models in memory/schema.py. Use when the Executor needs
   to record an action, outcome, learning, or any other journal section. Activates
   after task execution, belief changes, or reflective processes.
-compatibility:
-  - google-adk
+compatibility: google-adk
 metadata:
   scope: executor
   triggers:
