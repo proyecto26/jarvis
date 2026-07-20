@@ -1,0 +1,19 @@
+{
+  "name": "dante-dev",
+  "private": true,
+  "description": "Development entry point for DANTE — orchestrates the Python backend (uv) and the UI packages (npm)",
+  "scripts": {
+    "setup": "uv sync --extra server --extra dev && npm --prefix ui/web install && npm --prefix ui/desktop install",
+    "setup:full": "uv sync --all-extras && npm --prefix ui/web install && npm --prefix ui/desktop install",
+    "dev": "concurrently -n server,web -c blue,green \"uv run python -m triforce.server\" \"npm --prefix ui/web run dev\"",
+    "dev:desktop": "npm --prefix ui/desktop run dev",
+    "server": "uv run python -m triforce.server",
+    "temporal": "temporal server start-dev",
+    "test": "uv run pytest",
+    "selftest": "uv run python -m triforce.server.selftest",
+    "build": "npm --prefix ui/web run build && npm --prefix ui/desktop run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

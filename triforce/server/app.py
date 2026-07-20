@@ -28,10 +28,25 @@ from triforce.server.executor import build_responder
 
 logger = logging.getLogger(__name__)
 
+
+class _OtelDetachNoiseFilter(logging.Filter):
+    """Drop OpenTelemetry's benign 'Failed to detach context' errors.
+
+    ADK traces LLM calls with contextvars-based OTel spans. We finalize the
+    stream generator from a different asyncio task (cancel/watchdog/aclose),
+    so OTel cannot reset its context token and logs a ValueError — harmless,
+    widely reported, and pure console noise for this server.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "Failed to detach context" not in record.getMessage()
+
+
+logging.getLogger("opentelemetry.context").addFilter(_OtelDetachNoiseFilter())
+
 INSTALL_HINT = (
-    "triforce.server requires FastAPI and uvicorn, which are deliberately NOT "
-    "in pyproject.toml. Install them with:\n\n"
-    '    pip install fastapi "uvicorn[standard]" websockets\n\n'
+    "triforce.server requires FastAPI and uvicorn. Install them with:\n\n"
+    '    uv sync --extra server   # or: pip install fastapi "uvicorn[standard]" websockets\n\n'
     "then run: uvicorn triforce.server.app:app --host 127.0.0.1 --port 8420"
 )
 

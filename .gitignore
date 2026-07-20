@@ -5,6 +5,7 @@ knowledge/*
 !knowledge/.gitkeep
 *.pyc
 __pycache__/
+node_modules/
 .env
 .venv/
 dist/
@@ -16,3 +17,6 @@ run.log
 
 # Reference projects cloned for study — not part of the codebase
 examples/
+
+.claude/skills
+.agents/skills
