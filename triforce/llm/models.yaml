@@ -19,41 +19,43 @@
 
 models:
   # --- Frontier cloud (Gemini) ---
-  - id: gemini-2.0-flash
+  # Gemini 2.0/2.5 families were shut down by Google (2.0 on 2026-06-01;
+  # 2.5-flash follows on 2026-10-16) — only 3.x IDs have no announced EOL.
+  - id: gemini-3.5-flash
     provider: gemini
-    base_id: gemini-2.0-flash
+    base_id: gemini-3.5-flash
     capabilities: [reasoning, tools, function_calling, low_latency]
     context_window: 1_000_000
     p95_latency_ms: 500
-    cost_per_1k_tokens_usd: 0.00015
+    cost_per_1k_tokens_usd: 0.0015
     is_local: false
     supports_tools: true
     supports_vision: true
-    tags: [tier:cloud, family:gemini, role:fast]
+    tags: [tier:cloud, family:gemini, role:fast, role:balanced]
 
-  - id: gemini-1.5-pro
+  - id: gemini-3.1-pro-preview
     provider: gemini
-    base_id: gemini-1.5-pro
+    base_id: gemini-3.1-pro-preview
     capabilities: [reasoning, tools, function_calling, long_context]
-    context_window: 2_000_000
-    p95_latency_ms: 1_500
-    cost_per_1k_tokens_usd: 0.0035
-    is_local: false
-    supports_tools: true
-    supports_vision: true
-    tags: [tier:cloud, family:gemini, role:balanced]
-
-  - id: gemini-2.0-pro-exp
-    provider: gemini
-    base_id: gemini-2.0-pro-exp
-    capabilities: [reasoning, tools, function_calling, long_context]
-    context_window: 2_000_000
+    context_window: 1_000_000
     p95_latency_ms: 2_500
     cost_per_1k_tokens_usd: 0.0035
     is_local: false
     supports_tools: true
     supports_vision: true
     tags: [tier:cloud, family:gemini, role:deep]
+
+  - id: gemini-3.1-flash-lite
+    provider: gemini
+    base_id: gemini-3.1-flash-lite
+    capabilities: [tools, function_calling, low_latency]
+    context_window: 1_000_000
+    p95_latency_ms: 300
+    cost_per_1k_tokens_usd: 0.0002
+    is_local: false
+    supports_tools: true
+    supports_vision: true
+    tags: [tier:cloud, family:gemini, role:cheap]
 
   # --- Specialized local (Nemotron via Ollama) ---
   - id: nemotron-nano-9b

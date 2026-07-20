@@ -37,7 +37,7 @@ from triforce.llm.types import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_FALLBACK_MODEL_ID = "gemini-1.5-pro"
+DEFAULT_FALLBACK_MODEL_ID = "gemini-3.5-flash"
 
 
 def _signature(request: RouteRequest) -> str:

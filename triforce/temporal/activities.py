@@ -9,6 +9,7 @@ Install with: pip install jarvis-triforce[temporal]
 
 from __future__ import annotations
 
+import base64
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -27,10 +28,16 @@ class GeminiChatRequest:
     Matches Google's Gemini API pattern for multi-turn conversation.
     """
 
-    model: str = "gemini-2.0-flash"
+    model: str = "gemini-3.5-flash"
     system_instruction: str = ""
     contents: list[dict[str, Any]] = field(default_factory=list)
+    # Raw function declarations passed straight through to Gemini (dict form).
     tools: list[dict[str, Any]] = field(default_factory=list)
+    # Tool NAMES resolved to registered handlers inside the activity — Python
+    # callables cannot cross the Temporal boundary, so the durable ReAct loop
+    # ships names and the worker rebuilds declarations from the registry.
+    # Additive to ``tools``; both may be supplied.
+    tool_names: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -59,6 +66,37 @@ def get_handler(name: str) -> Any:
     return _TOOL_HANDLERS.get(name)
 
 
+def _build_function_declaration(client: Any, name: str, handler: Any) -> Any:
+    """Build a Gemini ``FunctionDeclaration`` for a registered handler.
+
+    Prefers ``FunctionDeclaration.from_callable`` (google-genai 2.11), which
+    derives the full parameter schema from the handler's signature. The
+    declaration name is then forced to the *registered* ``name`` so it matches
+    the key the durable ReAct loop dispatches on (handler ``__name__`` often
+    differs, e.g. ``reset_accumulator`` vs ``reset_accumulator_activity``).
+
+    Falls back to a minimal name + docstring declaration if introspection
+    fails (e.g. a handler with untyped ``**kwargs``), so a single awkward
+    handler never breaks the whole call.
+    """
+    from google.genai.types import FunctionDeclaration
+
+    try:
+        declaration = FunctionDeclaration.from_callable(client=client, callable=handler)
+        declaration.name = name
+        return declaration
+    except Exception as exc:  # noqa: BLE001 — signature introspection can fail
+        logger.warning(
+            "from_callable failed for tool %r (%s) — using minimal declaration",
+            name,
+            exc,
+        )
+        return FunctionDeclaration(
+            name=name,
+            description=(getattr(handler, "__doc__", "") or "").strip(),
+        )
+
+
 # ---------------------------------------------------------------------------
 # Temporal Activities (guarded import)
 # ---------------------------------------------------------------------------
@@ -79,18 +117,46 @@ try:
         """
         from google import genai
         from google.genai.types import (
+            AutomaticFunctionCallingConfig,
             GenerateContentConfig,
             HttpOptions,
+            Tool,
         )
 
-        client = genai.Client(
-            http_options=HttpOptions(api_version="v1alpha"),
-        )
+        # Default client (stable endpoint). GOOGLE_API_KEY is read from the
+        # environment. The previous ``api_version="v1alpha"`` override was
+        # removed: an empirical A/B against gemini-3.5-flash showed the default
+        # endpoint serves text, function calls, and thought signatures
+        # correctly, matching the working GeminiProvider (triforce/llm/
+        # providers/gemini.py). See PR notes for the ACT-OK evidence.
+        client = genai.Client()
+
+        # Assemble tool declarations from two additive sources:
+        #   1. request.tools      — raw dict declarations, passed through as-is
+        #   2. request.tool_names — names resolved to registered handlers HERE,
+        #      because Python callables cannot cross the Temporal boundary.
+        tools_list: list[Any] = list(request.tools) if request.tools else []
+        if request.tool_names:
+            function_declarations: list[Any] = []
+            for name in request.tool_names:
+                handler = get_handler(name)
+                if handler is None:
+                    logger.warning(
+                        "tool_names: no handler registered for %r — skipping", name
+                    )
+                    continue
+                function_declarations.append(
+                    _build_function_declaration(client, name, handler)
+                )
+            if function_declarations:
+                tools_list.append(Tool(function_declarations=function_declarations))
 
         config = GenerateContentConfig(
             system_instruction=request.system_instruction or None,
-            tools=request.tools or None,
-            automatic_function_calling_config={"disable": True},
+            tools=tools_list or None,
+            # Temporal owns the tool loop and retries — disable the SDK's
+            # automatic function calling. Correct field for google-genai 2.11.
+            automatic_function_calling=AutomaticFunctionCallingConfig(disable=True),
             http_options=HttpOptions(timeout=60_000),
         )
 
@@ -122,6 +188,16 @@ try:
                         part_dict["function_call"] = fc
                     if hasattr(part, "thought") and part.thought:
                         part_dict["thought"] = True
+                    # Preserve the thought signature for multi-turn continuity.
+                    # It is raw bytes (not JSON-serializable) so we base64-encode
+                    # it: the string survives Temporal's JSON payload boundary and
+                    # Part validation decodes it back to the exact bytes when the
+                    # workflow replays raw_parts as model content on the next turn.
+                    sig = getattr(part, "thought_signature", None)
+                    if sig:
+                        part_dict["thought_signature"] = base64.b64encode(sig).decode(
+                            "ascii"
+                        )
                     raw_parts.append(part_dict)
 
         return GeminiChatResponse(
@@ -148,22 +224,45 @@ try:
         converter = activity.payload_converter()
         values = converter.from_payloads([arg.payload for arg in args])
 
-        # Parse arguments — handle both dict and positional args
-        if values and len(values) == 1 and isinstance(values[0], dict):
-            result = await handler(**values[0]) if _is_async(handler) else handler(**values[0])
-        elif values:
-            result = await handler(*values) if _is_async(handler) else handler(*values)
-        else:
-            result = await handler() if _is_async(handler) else handler()
+        # Parse arguments — handle both dict (kwargs) and positional args.
+        # A raising handler is surfaced to the ReAct loop as a structured error
+        # instead of crashing the activity: the model receives it as a tool
+        # result and can react. ``Exception`` (not ``BaseException``) is caught
+        # so cancellation/shutdown still propagate to Temporal.
+        try:
+            if values and len(values) == 1 and isinstance(values[0], dict):
+                result = await handler(**values[0]) if _is_async(handler) else handler(**values[0])
+            elif values:
+                result = await handler(*values) if _is_async(handler) else handler(*values)
+            else:
+                result = await handler() if _is_async(handler) else handler()
+        except Exception as exc:  # noqa: BLE001 — report tool failure to the loop
+            logger.exception("Tool handler %r raised", activity_name)
+            return {"error": f"{type(exc).__name__}: {exc}"}
 
-        if isinstance(result, dict):
-            return result
-        return {"result": str(result)}
+        if not isinstance(result, dict):
+            result = {"result": str(result)}
+        return _ensure_json_serializable(result)
 
     def _is_async(func: Any) -> bool:
         """Check if a function is async."""
         import asyncio
         return asyncio.iscoroutinefunction(func)
+
+    def _ensure_json_serializable(obj: dict) -> dict:
+        """Guarantee a dict survives Temporal's JSON payload converter.
+
+        Fast path: return it unchanged when it already round-trips. Otherwise
+        coerce non-serializable values (bytes, datetimes, custom objects) via
+        ``default=str`` so a tool result never fails serialization on return.
+        """
+        import json
+
+        try:
+            json.dumps(obj)
+            return obj
+        except (TypeError, ValueError):
+            return json.loads(json.dumps(obj, default=str))
 
     logger.info("Temporal activities registered successfully")
 

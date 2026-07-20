@@ -33,7 +33,7 @@ A step relaxes constraints to find a candidate. Steps are tried top-to-bottom.
 
 - `error` — raise `NoCandidateError` (fail fast; the caller must handle it)
 - `escalate` — escalate to the Judge for manual model selection (skill hook)
-- `use_default_gemini` — fall back to the registry's `gemini-1.5-pro` regardless
+- `use_default_gemini` — fall back to the registry's `gemini-3.5-flash` regardless
 
 ## Worked example
 

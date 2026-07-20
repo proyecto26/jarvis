@@ -45,7 +45,7 @@ class Model:
 
     id: str
     provider: str  # matches a Provider implementation name (e.g. "gemini", "ollama")
-    base_id: str  # provider-specific model identifier (e.g. "gemini-2.0-flash")
+    base_id: str  # provider-specific model identifier (e.g. "gemini-3.5-flash")
     capabilities: frozenset[str] = field(default_factory=frozenset)
     context_window: int = 8_000
     p95_latency_ms: int = 1_000

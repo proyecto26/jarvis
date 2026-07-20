@@ -35,6 +35,19 @@ try:
 except Exception as exc:  # noqa: BLE001 — skills are optional; never crash imports
     logger.warning("ADK skills unavailable or malformed — running without skills: %s", exc)
 
+# Opt-in durable escalation seam. Off by default: the tool list is identical to
+# before, so the in-process ADK chat path the UI depends on is unchanged. When
+# DANTE_DURABLE_AWAKE is on, the Executor is offered escalate_to_durable_workflow
+# so a high-weight (action_weight >= 4) or long-running task can be handed to the
+# durable Temporal AwakeWorkflow. The tool degrades gracefully when Temporal is
+# unreachable, so enabling the flag never crashes a turn. See TEMPORAL.md.
+_durable_tools: list = []
+if Config.durable_awake_enabled():
+    from triforce.tools.temporal_tools import escalate_to_durable_workflow
+
+    _durable_tools = [escalate_to_durable_workflow]
+    logger.info("Executor: durable Awake escalation enabled (DANTE_DURABLE_AWAKE)")
+
 executor_agent = Agent(
     name="executor",
     model=Config.model_for("executor", Config.EXECUTOR_MODEL),
@@ -43,5 +56,5 @@ executor_agent = Agent(
     tools=[
         append_to_state, write_journal_entry,
         recall_episodic, check_belief_conflict, reinforce_memory,
-    ] + _skill_toolsets,
+    ] + _durable_tools + _skill_toolsets,
 )

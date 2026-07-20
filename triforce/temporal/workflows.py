@@ -12,9 +12,11 @@ Install with: pip install jarvis-triforce[temporal]
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
+from types import SimpleNamespace
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -35,7 +37,7 @@ class AwakeWorkflowInput:
 
     user_message: str = ""
     system_instruction: str = ""
-    model: str = "gemini-2.0-flash"
+    model: str = "gemini-3.5-flash"
     max_iterations: int = 20
 
 
@@ -50,10 +52,18 @@ class AwakeWorkflowResult:
 
 @dataclass
 class DreamWorkflowInput:
-    """Input for the DreamWorkflow."""
+    """Input for the DreamWorkflow.
 
-    dreamer_model: str = "gemini-2.0-pro-exp"
-    judge_model: str = "gemini-1.5-pro"
+    ``dreamer_model`` / ``judge_model`` default to ``None`` and are resolved to
+    ``Config.DREAMER_MODEL`` / ``Config.JUDGE_MODEL`` inside ``run()`` so the
+    DREAMER_MODEL / JUDGE_MODEL env overrides are honored. Config cannot be read
+    at class-definition time inside the Temporal workflow sandbox, so the
+    resolution is deferred to ``run()`` (where Config is passed through). Passing
+    an explicit id still overrides the env default.
+    """
+
+    dreamer_model: Optional[str] = None
+    judge_model: Optional[str] = None
     max_iterations: int = 8
 
 
@@ -65,6 +75,10 @@ class DreamWorkflowResult:
     breakthrough_insight: str = ""
     iterations: int = 0
     seeds_generated: int = 0
+    # Best idea produced this cycle — the last Dreamer seed text. A cycle that
+    # ends on max-iterations still surfaces its work instead of discarding
+    # everything.
+    final_idea: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -139,13 +153,139 @@ async def run_consolidation_activity() -> dict:
             beat_task.cancel()
 
 
+# ---------------------------------------------------------------------------
+# Executor tool adapters (always importable — real tools imported lazily)
+# ---------------------------------------------------------------------------
+#
+# The Executor's ADK tools take an injected ``tool_context: ToolContext`` that
+# only exists inside an ADK runner. Inside a Temporal activity there is no ADK
+# session, so each tool is registered as a thin *adapter* with a model-facing
+# signature (which yields a clean schema for FunctionDeclaration.from_callable
+# and matches the args Gemini emits) that injects a lightweight shim context at
+# call time. The real tool modules are imported lazily so this module keeps
+# importing without google-adk installed.
+
+# Executor tools offered to Gemini during the Awake ReAct loop. Each name is a
+# registry key the dynamic activity dispatches on.
+EXECUTOR_TOOL_NAMES: list[str] = [
+    "recall_episodic",
+    "check_belief_conflict",
+    "reinforce_memory",
+    "write_journal_entry",
+    "append_to_state",
+]
+
+
+class _ShimToolContext:
+    """Minimal stand-in for ADK's ToolContext outside an ADK runner.
+
+    Exposes ``state`` (a plain-dict scratchpad) and ``actions`` — the only
+    attributes the Executor's memory/journal/state tools touch. The scratchpad
+    is NOT durable: every dynamic-tool dispatch is a fresh Temporal activity, so
+    it lives for that one call only. The durable conversation is the workflow's
+    ``contents`` / ``dream_context``, never ADK session state.
+    """
+
+    def __init__(self) -> None:
+        self.state: dict[str, Any] = {}
+        self.actions = SimpleNamespace(escalate=False)
+
+
+def recall_episodic_tool(query: str) -> dict:
+    """Recall past experiences similar to a natural-language query."""
+    from triforce.tools.memory_tools import recall_episodic
+
+    return recall_episodic(query, _ShimToolContext())
+
+
+def check_belief_conflict_tool(belief_a: str, belief_b: str) -> dict:
+    """Check whether two beliefs potentially contradict each other."""
+    from triforce.tools.memory_tools import check_belief_conflict
+
+    return check_belief_conflict(belief_a, belief_b, _ShimToolContext())
+
+
+def reinforce_memory_tool(entry_date: str) -> dict:
+    """Reinforce an episodic memory, resetting its decay clock."""
+    from triforce.tools.memory_tools import reinforce_memory
+
+    return reinforce_memory(entry_date, _ShimToolContext())
+
+
+def write_journal_entry_tool(section: str, content: str) -> dict:
+    """Append an entry to a section of today's journal."""
+    from triforce.tools.journal_tools import write_journal_entry
+
+    return write_journal_entry(section, content, _ShimToolContext())
+
+
+def append_to_state_tool(key: str, value: str) -> dict:
+    """Append a value to a list key in scratch state, or set a scalar key."""
+    from triforce.tools.state_tools import append_to_state
+
+    return append_to_state(key, value, _ShimToolContext())
+
+
+# Adapter name -> (module to probe for availability, adapter callable).
+_EXECUTOR_TOOL_ADAPTERS: dict[str, tuple[str, Callable[..., dict]]] = {
+    "recall_episodic": ("triforce.tools.memory_tools", recall_episodic_tool),
+    "check_belief_conflict": ("triforce.tools.memory_tools", check_belief_conflict_tool),
+    "reinforce_memory": ("triforce.tools.memory_tools", reinforce_memory_tool),
+    "write_journal_entry": ("triforce.tools.journal_tools", write_journal_entry_tool),
+    "append_to_state": ("triforce.tools.state_tools", append_to_state_tool),
+}
+
+
+def _detect_breakthrough(text: str) -> bool:
+    """Heuristic breakthrough detector for the Dreamer/Judge collaborator loop.
+
+    Still string-based on purpose — in the durable path the Judge emits
+    free-form text, not a structured tool call — but it matches a few
+    affirmative markers instead of a single exact JSON literal, so it is a
+    little less brittle. A fully robust version would have the Judge emit a
+    structured ``breakthrough`` field (tool/JSON schema) and parse that.
+    """
+    if not text:
+        return False
+    haystack = text.lower()
+    markers = (
+        '"breakthrough": true',
+        '"breakthrough":true',
+        "breakthrough detected",
+        "breakthrough confirmed",
+        "breakthrough achieved",
+    )
+    return any(marker in haystack for marker in markers)
+
+
 def _register_tool_handlers() -> None:
-    """Register tool handlers for dynamic activity dispatch."""
+    """Register tool handlers for dynamic activity dispatch.
+
+    The consolidation / reflection handlers have no optional dependencies and
+    are always registered. The Executor tool adapters are imported lazily and
+    guarded — each pulls in ``google-adk``; if that (or a tool module) is
+    unavailable the adapter is logged and skipped so this module still loads
+    and the durable ReAct loop simply offers fewer tools.
+    """
     from triforce.temporal.activities import register_tool
 
     register_tool("check_reflection_due", check_reflection_due_activity)
     register_tool("reset_accumulator", reset_accumulator_activity)
     register_tool("run_consolidation", run_consolidation_activity)
+
+    import importlib
+
+    for name, (module_path, adapter) in _EXECUTOR_TOOL_ADAPTERS.items():
+        try:
+            importlib.import_module(module_path)
+        except Exception as exc:  # noqa: BLE001 — optional dep; degrade gracefully
+            logger.warning(
+                "Executor tool %r unavailable (%s) — skipping registration",
+                name,
+                exc,
+            )
+            continue
+        register_tool(name, adapter)
 
 
 _register_tool_handlers()
@@ -166,6 +306,53 @@ try:
             generate_content,
             dynamic_tool_activity,
         )
+        from triforce.config import Config
+
+    # Real Trinity prompts for the Dream cycle. Imported through the sandbox
+    # passthrough so the workflow uses the true prompts at runtime, but guarded
+    # independently of the outer temporalio guard: importing them pulls in the
+    # agents package (which builds ADK Agent objects and needs google-adk). If
+    # that is unavailable we fall back to concise role prompts rather than
+    # disabling every workflow — the Dream cycle still runs, and the Awake /
+    # Consolidation workflows are wholly unaffected.
+    _DREAMER_SYSTEM_PROMPT = (
+        "You are the Dreamer — the subconscious of Jarvis. Operate without "
+        "feasibility filters: generate ideas freely, associate wildly, connect "
+        "distant concepts, and explore the edges of the possible. Each cycle, "
+        "produce 3-5 specific new seeds, connections, or 'what-if' scenarios; "
+        "vague dreams do not lead to breakthroughs."
+    )
+    _JUDGE_COLLABORATOR_PROMPT = (
+        "You are the Judge in Collaborator Mode — not a filter but a connector. "
+        "Deepen the Dreamer's seeds by linking them to past experience and known "
+        "patterns; ask where you have seen something like this before. A "
+        "breakthrough is a REFRAME, not merely a good idea — call one out only "
+        "when something familiar suddenly looks completely different or two "
+        "unconnected things reveal a deep structural similarity."
+    )
+    try:
+        with workflow.unsafe.imports_passed_through():
+            from triforce.agents.dreamer.prompts import (
+                DREAMER_INSTRUCTION as _DREAMER_SYSTEM_PROMPT,
+            )
+            from triforce.agents.judge.prompts import (
+                COLLABORATOR_PROMPT as _JUDGE_COLLABORATOR_PROMPT,
+            )
+    except Exception as exc:  # noqa: BLE001 — agents package import side effects
+        logger.warning(
+            "Real Dream prompts unavailable (%s) — using fallback role prompts",
+            exc,
+        )
+
+    # A permanent error (bad request, validation, wrong type) must fail the
+    # workflow fast instead of retrying unbounded — the core "spins forever"
+    # fix. Transient / infrastructure errors still get a few attempts. Applied
+    # to every generate_content call and to tool dispatch (where an
+    # unregistered tool name surfaces as a non-retryable ValueError).
+    _RETRY_POLICY = RetryPolicy(
+        maximum_attempts=3,
+        non_retryable_error_types=["ValueError", "ValidationError", "TypeError"],
+    )
 
     @workflow.defn
     class AwakeWorkflow:
@@ -188,41 +375,52 @@ try:
             for _ in range(input.max_iterations):
                 iterations += 1
 
-                # LLM call as durable activity
+                # LLM call as durable activity. Offer the Executor's real tools
+                # by name so a function call dispatches to a registered handler
+                # instead of raising.
                 request = GeminiChatRequest(
                     model=input.model,
                     system_instruction=input.system_instruction,
                     contents=contents,
+                    tool_names=EXECUTOR_TOOL_NAMES,
                 )
                 response: GeminiChatResponse = await workflow.execute_activity(
                     generate_content,
                     request,
                     start_to_close_timeout=timedelta(seconds=60),
+                    retry_policy=_RETRY_POLICY,
                 )
 
-                # If no function calls, we have the final response
+                # If no function calls, we have the final response.
                 if not response.function_calls:
+                    # Persist the exchange before returning — a text-only turn
+                    # otherwise leaves no trace in the journal.
+                    await self._journal_exchange(input.user_message, response.text)
                     return AwakeWorkflowResult(
                         response_text=response.text,
                         tool_calls_made=tool_calls_made,
                         iterations=iterations,
                     )
 
-                # Append assistant response to contents
+                # Append assistant response to contents.
                 contents.append({
                     "role": "model",
                     "parts": response.raw_parts,
                 })
 
-                # Execute each tool call as a separate durable activity
+                # Execute each tool call as a separate durable activity.
                 tool_results = []
                 for fc in response.function_calls:
                     # Invoked by name string — unregistered activity types are
-                    # routed to dynamic_tool_activity on the worker.
+                    # routed to dynamic_tool_activity on the worker. The bounded
+                    # retry policy makes a bad/unregistered tool name (a
+                    # ValueError from the dispatcher) fail fast instead of
+                    # retrying forever.
                     result = await workflow.execute_activity(
                         fc["name"],
                         args=[fc.get("args", {})],
                         start_to_close_timeout=timedelta(seconds=30),
+                        retry_policy=_RETRY_POLICY,
                     )
                     tool_calls_made += 1
                     tool_results.append({
@@ -232,7 +430,7 @@ try:
                         }
                     })
 
-                # Append tool results to contents
+                # Append tool results to contents.
                 contents.append({
                     "role": "user",
                     "parts": tool_results,
@@ -243,6 +441,34 @@ try:
                 tool_calls_made=tool_calls_made,
                 iterations=iterations,
             )
+
+        async def _journal_exchange(
+            self, user_message: str, response_text: str
+        ) -> None:
+            """Persist a completed awake exchange to today's journal.
+
+            Routed through the same durable ``write_journal_entry`` tool path
+            (section ``executions``). A journal failure must never sink an
+            already-computed response, so the activity is bounded by
+            ``_RETRY_POLICY`` and any error is swallowed after logging.
+            """
+            content = json.dumps({
+                "action": f"Responded to: {user_message[:200]}",
+                "status": "completed",
+                "outcome": response_text[:4000],
+            })
+            try:
+                await workflow.execute_activity(
+                    "write_journal_entry",
+                    args=[{"section": "executions", "content": content}],
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=_RETRY_POLICY,
+                )
+            except Exception:  # noqa: BLE001 — persistence is best-effort
+                workflow.logger.warning(
+                    "Awake exchange journal write failed — response returned anyway",
+                    exc_info=True,
+                )
 
     @workflow.defn
     class DreamWorkflow:
@@ -255,14 +481,21 @@ try:
         @workflow.run
         async def run(self, input: DreamWorkflowInput) -> DreamWorkflowResult:
             """Execute a dream cycle."""
+            # Resolve models here (not at class-def time) so the DREAMER_MODEL /
+            # JUDGE_MODEL env overrides apply. Config is passed through the
+            # sandbox; these attributes are constants set once at import.
+            dreamer_model = input.dreamer_model or Config.DREAMER_MODEL
+            judge_model = input.judge_model or Config.JUDGE_MODEL
+
             seeds_generated = 0
+            last_idea = ""
             dream_context: list[dict[str, Any]] = []
 
             for iteration in range(input.max_iterations):
-                # Dreamer generates ideas
+                # Dreamer generates ideas.
                 dreamer_request = GeminiChatRequest(
-                    model=input.dreamer_model,
-                    system_instruction="You are the Dreamer — generate unconstrained ideas.",
+                    model=dreamer_model,
+                    system_instruction=_DREAMER_SYSTEM_PROMPT,
                     contents=dream_context + [
                         {"role": "user", "parts": [{"text": "Generate new dream seeds."}]}
                     ],
@@ -271,13 +504,16 @@ try:
                     generate_content,
                     dreamer_request,
                     start_to_close_timeout=timedelta(seconds=60),
+                    retry_policy=_RETRY_POLICY,
                 )
                 seeds_generated += 1
+                if dreamer_response.text:
+                    last_idea = dreamer_response.text
 
-                # Judge evaluates for breakthrough
+                # Judge evaluates for breakthrough.
                 judge_request = GeminiChatRequest(
-                    model=input.judge_model,
-                    system_instruction="You are the Judge collaborator — evaluate for breakthroughs.",
+                    model=judge_model,
+                    system_instruction=_JUDGE_COLLABORATOR_PROMPT,
                     contents=[
                         {"role": "user", "parts": [{"text": dreamer_response.text}]}
                     ],
@@ -286,27 +522,31 @@ try:
                     generate_content,
                     judge_request,
                     start_to_close_timeout=timedelta(seconds=60),
+                    retry_policy=_RETRY_POLICY,
                 )
 
-                # Check for breakthrough signal in Judge response
-                if '"breakthrough": true' in judge_response.text.lower() or \
-                   '"breakthrough":true' in judge_response.text.lower():
+                # Check for breakthrough signal in Judge response.
+                if _detect_breakthrough(judge_response.text):
                     return DreamWorkflowResult(
                         breakthrough=True,
                         breakthrough_insight=judge_response.text,
                         iterations=iteration + 1,
                         seeds_generated=seeds_generated,
+                        final_idea=last_idea,
                     )
 
-                # Add to dream context for next iteration
+                # Add to dream context for next iteration.
                 dream_context.append(
                     {"role": "model", "parts": [{"text": dreamer_response.text}]}
                 )
 
+            # No breakthrough — return the best (last) idea rather than
+            # discarding a cycle's worth of generation.
             return DreamWorkflowResult(
                 breakthrough=False,
                 iterations=input.max_iterations,
                 seeds_generated=seeds_generated,
+                final_idea=last_idea,
             )
 
     @workflow.defn

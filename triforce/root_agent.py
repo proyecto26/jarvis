@@ -1,4 +1,13 @@
-"""Root dispatcher — routes to operating modes based on context."""
+"""Root dispatcher — routes to operating modes based on context.
+
+Durability note: every mode below runs in-process via ADK. Durable execution is
+NOT wired at this dispatcher — it is an opt-in escalation that happens one level
+down, inside awake_pipeline's Executor. When Config.DANTE_DURABLE_AWAKE is on the
+Executor gains the escalate_to_durable_workflow tool and can hand a high-weight
+(action_weight >= 4) or long-running task to the durable Temporal AwakeWorkflow;
+by default nothing here starts a workflow. See triforce/temporal/client.py and
+TEMPORAL.md.
+"""
 
 from google.adk.agents import Agent
 

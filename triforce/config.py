@@ -18,10 +18,10 @@ class Config:
     """Central configuration — model, path, Temporal, and memory settings."""
 
     # --- Trinity model selection (LLM router will replace these) ---
-    DREAMER_MODEL: str = os.getenv("DREAMER_MODEL", "gemini-2.0-pro-exp")
-    JUDGE_MODEL: str = os.getenv("JUDGE_MODEL", "gemini-1.5-pro")
-    EXECUTOR_MODEL: str = os.getenv("EXECUTOR_MODEL", "gemini-2.0-flash")
-    ROOT_MODEL: str = os.getenv("ROOT_MODEL", "gemini-2.0-flash")
+    DREAMER_MODEL: str = os.getenv("DREAMER_MODEL", "gemini-3.1-pro-preview")
+    JUDGE_MODEL: str = os.getenv("JUDGE_MODEL", "gemini-3.5-flash")
+    EXECUTOR_MODEL: str = os.getenv("EXECUTOR_MODEL", "gemini-3.5-flash")
+    ROOT_MODEL: str = os.getenv("ROOT_MODEL", "gemini-3.5-flash")
 
     # --- Paths ---
     JOURNAL_DIR: Path = PROJECT_ROOT / "journal"
@@ -57,9 +57,22 @@ class Config:
     # behavior). Any other value enables the router.
     DANTE_ROUTER: str = os.getenv("DANTE_ROUTER", "off")
 
+    # --- Durable Awake escalation (opt-in) ---
+    # When "off" (default) every Executor turn runs in-process via ADK — the
+    # working chat path is byte-identical to before this flag existed. When on,
+    # the Executor is additionally offered the escalate_to_durable_workflow tool
+    # so a high-weight (action_weight >= 4) or long-running task can be handed to
+    # the durable Temporal AwakeWorkflow. Escalation still degrades gracefully
+    # when Temporal is unreachable — the Executor keeps working in-process.
+    DANTE_DURABLE_AWAKE: str = os.getenv("DANTE_DURABLE_AWAKE", "off")
+
     @classmethod
     def router_enabled(cls) -> bool:
         return cls.DANTE_ROUTER.lower() not in ("off", "0", "false", "no", "")
+
+    @classmethod
+    def durable_awake_enabled(cls) -> bool:
+        return cls.DANTE_DURABLE_AWAKE.lower() not in ("off", "0", "false", "no", "")
 
     @classmethod
     def model_for(cls, agent: str, fallback: str) -> str:
